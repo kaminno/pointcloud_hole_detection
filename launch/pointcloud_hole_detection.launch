@@ -1,0 +1,5 @@
+<launch>
+  <node name="pc_detection" pkg="pointcloud_hole_detection" type="pc_detection" output="screen"> <!-- launch-prefix="valgrind"> -->
+    <rosparam command="load" file="$(find pointcloud_hole_detection)/config/pointcloud_hole_detection.yaml"/>
+  </node>
+</launch>
