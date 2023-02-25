@@ -38,7 +38,7 @@ typedef pcl::PointCloud<pcl::PointNormal> PointCloudN;
 #include <omp.h>
 
 int main(int argc, char* argv[]){
-	const std::string node_name("pointcloud_hole_detection");
+	const std::string node_name("pc_detection");
 	ros::init(argc, argv, node_name);
 	ros::NodeHandle nh;
     mrs_lib::ParamLoader pl(nh, node_name);
