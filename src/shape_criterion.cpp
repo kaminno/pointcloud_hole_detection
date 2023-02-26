@@ -139,17 +139,17 @@ std::vector<double> some_func(PointCloud cloud, std::map<unsigned long int, std:
         double c23 = 0;
         double c33 = 0;
         Point centroid;
-        centroid.x = 0;
-        centroid.y = 0;
-        centroid.z = 0;
-        for(int j = 0; j < neighbours[i].size(); j++){
-            centroid.x += (*cloud)[neighbours[i][j]].x;
-            centroid.y += (*cloud)[neighbours[i][j]].y;
-            centroid.z += (*cloud)[neighbours[i][j]].z;
-        }
-        centroid.x /= neighbours[i].size();
-        centroid.y /= neighbours[i].size();
-        centroid.z /= neighbours[i].size();
+        // centroid.x = 0;
+        // centroid.y = 0;
+        // centroid.z = 0;
+        // for(int j = 0; j < neighbours[i].size(); j++){
+        //     centroid.x += (*cloud)[neighbours[i][j]].x;
+        //     centroid.y += (*cloud)[neighbours[i][j]].y;
+        //     centroid.z += (*cloud)[neighbours[i][j]].z;
+        // }
+        // centroid.x /= neighbours[i].size();
+        // centroid.y /= neighbours[i].size();
+        // centroid.z /= neighbours[i].size();
         for(int j = 0; j < neighbours[i].size(); j++){
             Point q = (*cloud)[neighbours[i][j]];
             double d1 = mis[i].x - q.x;

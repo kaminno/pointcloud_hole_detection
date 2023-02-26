@@ -52,12 +52,15 @@ std::vector<double> get_probabilities(PointCloud cloud, std::vector<Point> mi_pr
         // double z_ = (*cloud)[i].z - mi_prime[i].z;
         // double norm = sqrt(x_*x_ + y_*y_ + z_*z_);
         double norm = vect_norm((*cloud)[i], mi_prime[i]);
+        // std::cout << "norm: " << norm << std::endl;
         double not_prob = norm / ((4*distances[i]) / (3*M_PI));
+        // std::cout << "prob: " << not_prob << std::endl;
         if(not_prob > 0.4){
             std::cout << not_prob << std::endl;
         }
         double prob = fmin(not_prob, 1);
         probs.push_back(prob);
+        // std::cout << "----------------" << std::endl;
     }
 
     auto end = std::chrono::high_resolution_clock::now();

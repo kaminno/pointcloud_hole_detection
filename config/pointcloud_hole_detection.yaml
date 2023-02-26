@@ -1,11 +1,11 @@
-K: 19
+K: 29
 # K_normal_estimation: 10
-epsilon: 0.15
+epsilon: 0.2
 # K=29, eps=0.3 works pretty good for angles
-# file_name: "cholina/pcd/cholina.pcd"
-file_name: "kn_gym_A1/pcd/kn_gym_A1.pcd"
+file_name: "cholina/pcd/cholina.pcd"
+# file_name: "kn_gym_A1/pcd/kn_gym_A1.pcd"
 # file_name: "olomouc_marie_snezna/pcd/olomouc_marie_snezna.pcd"
-trashold: 0.1
+trashold: 0.2
 
 k_halfdisc: 1
 k_angle: 0

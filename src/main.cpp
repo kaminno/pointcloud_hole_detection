@@ -54,12 +54,14 @@ int main(int argc, char* argv[]){
     double trashold;
     double k_angle;
     double k_halfdisc;
+    double k_shape;
     pl.loadParam(node_name + "/K", K);
     pl.loadParam(node_name + "/epsilon", epsilon);
     pl.loadParam(node_name + "/file_name", name);
     pl.loadParam(node_name + "/trashold", trashold);
     pl.loadParam(node_name + "/k_angle", k_angle);
     pl.loadParam(node_name + "/k_halfdisc", k_halfdisc);
+    pl.loadParam(node_name + "/k_shape", k_shape);
 
 	// const std::string pcl_file_name("/home/honzuna/moje/bakalarka/modely/naki_gazebo_resources-master/models/cholina/pcd/cholina.pcd");
     const std::string pcl_file_name("/home/honzuna/moje/bakalarka/modely/naki_gazebo_resources-master/models/" + name);

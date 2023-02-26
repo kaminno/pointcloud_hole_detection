@@ -42,6 +42,13 @@ std::map<unsigned long int, std::vector<int>> get_neighbours(PointCloud cloud, u
         std::vector<float> pointKNNSquaredDistance(K);
         kdtree.nearestKSearch ((*cloud)[i], K, pointIdxKNNSearch, pointKNNSquaredDistance);
         graph[i].insert(graph[i].end(), pointIdxKNNSearch.begin(), pointIdxKNNSearch.end());
+
+        int l1 = graph[i].size();
+        graph[i].erase(std::remove(graph[i].begin(), graph[i].end(), i), graph[i].end());
+        int l2 = graph[i].size();
+        if(l1 == l2){
+            std::cout << "same lengths :/" << std::endl;
+        }
         
         for(int j = 0; j < pointIdxRadiusSearch.size(); j++){
             graph[pointIdxRadiusSearch[j]].push_back(i);
@@ -116,8 +123,12 @@ std::map<unsigned long int, std::vector<std::pair<int, double>>> get_neighbours_
         std::vector< int> pointIdxRadiusSearch;
         std::vector<float> pointRadiusSquaredDistance;
         kdtree.radiusSearch((*cloud)[i], epsilon, pointIdxRadiusSearch, pointRadiusSquaredDistance);
+        if(pointIdxRadiusSearch.size() != pointRadiusSquaredDistance.size()){
+            std::cout << "ERROR LENGTH RADIUS" << std::endl;
+        }
         for(int j = 0; j < pointIdxRadiusSearch.size(); j++){
-            graph[i].push_back(std::pair<int, double>{pointIdxRadiusSearch[j], pointRadiusSquaredDistance[j]});
+            // graph[i].push_back(std::pair<int, double>{pointIdxRadiusSearch[j], pointRadiusSquaredDistance[j]});
+            graph[i].push_back(std::pair<int, double>{pointIdxRadiusSearch[j], sqrt(pointRadiusSquaredDistance[j])});
         }
         // (graph[i].begin()->first).insert(graph[i].begin()->first.end(), pointIdxRadiusSearch.begin(), pointIdxRadiusSearch.end());
         // (graph[i].begin()->second).insert(graph[i].begin()->second.end(), pointRadiusSquaredDistance.begin(), pointRadiusSquaredDistance.end());
@@ -125,22 +136,43 @@ std::map<unsigned long int, std::vector<std::pair<int, double>>> get_neighbours_
         std::vector<int> pointIdxKNNSearch(K);
         std::vector<float> pointKNNSquaredDistance(K);
         kdtree.nearestKSearch ((*cloud)[i], K, pointIdxKNNSearch, pointKNNSquaredDistance);
+        if(pointIdxKNNSearch.size() != pointKNNSquaredDistance.size()){
+            std::cout << "ERROR LENGTH K" << std::endl;
+        }
         for(int j = 0; j < pointIdxKNNSearch.size(); j++){
-            graph[i].push_back(std::pair<int, double>{pointIdxKNNSearch[j], pointKNNSquaredDistance[j]});
+            // graph[i].push_back(std::pair<int, double>{pointIdxKNNSearch[j], pointKNNSquaredDistance[j]});
+            graph[i].push_back(std::pair<int, double>{pointIdxKNNSearch[j], sqrt(pointKNNSquaredDistance[j])});
         }
         // graph[i].insert(graph[i].end(), pointIdxKNNSearch.begin(), pointIdxKNNSearch.end());
         // (graph[i].begin()->first).insert(graph[i].begin()->first.end(), pointIdxKNNSearch.begin(), pointIdxKNNSearch.end());
         // (graph[i].begin()->second).insert(graph[i].begin()->second.end(), pointKNNSquaredDistance.begin(), pointKNNSquaredDistance.end());
 
+        int l1 = graph[i].size();
+        std::vector<int> idxs;
+        for(int j = 0; j < graph[i].size(); j++){
+            if(graph[i][j].first == i){
+                idxs.push_back(j);
+            }
+        }
+        for(int j = 0; j < idxs.size(); j++){
+            graph[i].erase(graph[i].begin() + idxs[j] - j);
+        }
+        int l2 = graph[i].size();
+        if(l1 == l2){
+            std::cout << "WRONG REMOVE OF POINT P" << std::endl;
+        }
+
         for(int j = 0; j < pointIdxRadiusSearch.size(); j++){
             // graph[pointIdxRadiusSearch[j]].push_back(i);
-            graph[pointIdxRadiusSearch[j]].push_back(std::pair<int, double>{i, pointRadiusSquaredDistance[j]});
+            // graph[pointIdxRadiusSearch[j]].push_back(std::pair<int, double>{i, pointRadiusSquaredDistance[j]});
+            graph[pointIdxRadiusSearch[j]].push_back(std::pair<int, double>{i, sqrt(pointRadiusSquaredDistance[j])});
 
         }
 
         for(int j = 0; j < pointIdxKNNSearch.size(); j++){
             // graph[pointIdxKNNSearch[j]].push_back(i);
-            graph[pointIdxKNNSearch[j]].push_back(std::pair<int, double>{i, pointKNNSquaredDistance[j]});
+            // graph[pointIdxKNNSearch[j]].push_back(std::pair<int, double>{i, pointKNNSquaredDistance[j]});
+            graph[pointIdxKNNSearch[j]].push_back(std::pair<int, double>{i, sqrt(pointKNNSquaredDistance[j])});
         }
 	}
     unsigned long int num = 0;
@@ -185,6 +217,7 @@ std::vector<double> compute_average_distances(std::map<unsigned long int, std::v
             avg_dist += neighbours_and_distances[i][j].second;
         }
         // std::cout << "division" << std::endl;
+        // avg_dist /= (neighbours_and_distances[i].size() - 1);
         avg_dist /= neighbours_and_distances[i].size();
         // std::cout << "pushing" << std::endl;
         average_distances.push_back(avg_dist);
@@ -212,20 +245,27 @@ std::vector<Point> compute_mi(PointCloud cloud, std::map<unsigned long int, std:
         numerator.y = 0;
         numerator.z = 0;
         double denominator = 0;
+        Point p = (*cloud)[i];
+        double sigma = average_distances[i] / 3;
+        // std::cout << "sigma " << sigma << std::endl;
         for(int j = 0; j < neighbours[i].size(); j++){
-            Point p = (*cloud)[i];
+            // std::cout << "first for " << j << ": " << neighbours[i][j].first << std::endl;
             Point q = (*cloud)[neighbours[i][j].first];
-            // double norm = vect_norm((*cloud)[neighbours[i][j].first], (*cloud)[i]);
-            // q = tangent_projection(normal_vectors->points[i], p, q);
             double norm = vect_norm(q, p);
-            double sigma = average_distances[i] / 3;
+            // std::cout << "norm " << norm << std::endl;
             double g = exp(-(norm*norm)/(sigma*sigma));
+            // double g = exp(-(norm*norm)/(sigma));
+            // std::cout << "g " << g << std::endl;
+
             // numerator.x += (*cloud)[neighbours[i][j].first].x * g;
             // numerator.y += (*cloud)[neighbours[i][j].first].y * g;
             // numerator.z += (*cloud)[neighbours[i][j].first].z * g;
-            numerator.x += q.x * g;
-            numerator.y += q.y * g;
-            numerator.z += q.z * g;
+            numerator.x += (q.x * g);
+            numerator.y += (q.y * g);
+            numerator.z += (q.z * g);
+            // numerator.x += q.x;
+            // numerator.y += q.y;
+            // numerator.z += q.z;
             // Point p = tangent_projection(normal_vectors->points[i], (*cloud)[i], (*cloud)[neighbours[i][j].first]);
             // double norm = vect_norm(p, (*cloud)[i]);
             // double sigma = average_distances[i] / 3;
@@ -234,10 +274,14 @@ std::vector<Point> compute_mi(PointCloud cloud, std::map<unsigned long int, std:
             // numerator.y += p.y * g;
             // numerator.z += p.z * g;
             denominator += g;
+            // denominator += 1;
         }
         mi_p.x = numerator.x / denominator;
         mi_p.y = numerator.y / denominator;
         mi_p.z = numerator.z / denominator;
+        // std::cout << "mi " << i << " (" << mi_p.x << ", " << mi_p.y << ", " << mi_p.z << ")" << std::endl;
+        // std::cout << "point " << i << " (" << p.x << ", " << p.y << ", " << p.z << ")" << std::endl;
+        // std::cout << "------------------------" << std::endl;
         mis.push_back(mi_p);
     }
 
