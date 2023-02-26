@@ -55,16 +55,17 @@ int main(int argc, char* argv[]){
     double k_angle;
     double k_halfdisc;
     double k_shape;
+    std::string abs_path;
     pl.loadParam(node_name + "/K", K);
     pl.loadParam(node_name + "/epsilon", epsilon);
+    pl.loadParam(node_name + "/abs_path", abs_path);
     pl.loadParam(node_name + "/file_name", name);
     pl.loadParam(node_name + "/trashold", trashold);
     pl.loadParam(node_name + "/k_angle", k_angle);
     pl.loadParam(node_name + "/k_halfdisc", k_halfdisc);
     pl.loadParam(node_name + "/k_shape", k_shape);
-
-	// const std::string pcl_file_name("/home/honzuna/moje/bakalarka/modely/naki_gazebo_resources-master/models/cholina/pcd/cholina.pcd");
-    const std::string pcl_file_name("/home/honzuna/moje/bakalarka/modely/naki_gazebo_resources-master/models/" + name);
+    
+    const std::string pcl_file_name(abs_path + name);
 	pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud (new pcl::PointCloud<pcl::PointXYZRGB>);
 //     pcl::PointCloud<pcl::PointXYZRGBNormal>::Ptr cloud (new pcl::PointCloud<pcl::PointXYZRGBNormal>);
 	
