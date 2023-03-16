@@ -118,8 +118,8 @@ catkin_package(
 #  LIBRARIES bakalarka
 #  CATKIN_DEPENDS roscpp std_msgs
 #  DEPENDS system_lib
-    DEPENDS
-        OpenMP
+    # DEPENDS
+    #     OpenMP
 )
 
 
@@ -220,12 +220,13 @@ include_directories(
 # catkin_add_nosetests(test)
 
 add_executable(pc_detection src/main.cpp)
-target_compile_options(pc_detection PRIVATE ${OpenMP_FLAGS})
+# add_executable(pc_detection src/main.cpp src/angle_criterion.cpp src/halfdisc_criterion.cpp src/shape_criterion.cpp src/boundary_coherence.cpp)
+# target_compile_options(pc_detection PRIVATE ${OpenMP_FLAGS})
 # target_link_libraries(main ${catkin_LIBRARIES})
 add_dependencies(pc_detection ${catkin_EXPORTED_TARGETS})
 
 target_link_libraries(pc_detection
   ${catkin_LIBRARIES}
-  ${OpenMP_LIBS}
+  # ${OpenMP_LIBS}
 )
 

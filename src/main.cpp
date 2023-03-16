@@ -2,6 +2,7 @@
 #include <vector>
 #include <map>
 #include <math.h>
+#include <queue>
 
 #include <ros/ros.h>
 #include <visualization_msgs/Marker.h>
@@ -26,11 +27,20 @@
 #include <pcl/filters/passthrough.h>
 #include <pcl/features/normal_3d.h>
 
-#include "angle_criterion.cpp"
-#include "halfdisc_criterion.cpp"
-#include "shape_criterion.cpp"
+// #include "angle_criterion.cpp"
+// #include "halfdisc_criterion.cpp"
+// #include "shape_criterion.cpp"
+// #include "boundary_coherence.cpp"
+
+#include "../include/angle_criterion.h"
+#include "../include/halfdisc_criterion.h"
+#include "../include/shape_criterion.h"
+#include "../include/boundary_coherence.h"
+// #include "boundary_coherence.cpp"
 
 #include <mrs_lib/param_loader.h>
+
+// #include "auxiliary_functions.h"
 
 // typedef std::vector<PointXYZRGB, Eigen::aligned_allocator<PointXYZRGB> > VectorType; 
 // typedef pcl::PointCloud<pcl::PointXYZ> PointCloud;
@@ -64,6 +74,10 @@ int main(int argc, char* argv[]){
     pl.loadParam(node_name + "/k_angle", k_angle);
     pl.loadParam(node_name + "/k_halfdisc", k_halfdisc);
     pl.loadParam(node_name + "/k_shape", k_shape);
+
+    int q;
+    pl.loadParam(node_name + "/q", q);
+
     
     const std::string pcl_file_name(abs_path + name);
 	pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud (new pcl::PointCloud<pcl::PointXYZRGB>);
@@ -76,16 +90,16 @@ int main(int argc, char* argv[]){
 	}
 	
 	std::cout << "Loaded " << cloud->width * cloud->height << " data points with the following fields "	<< std::endl;
-// 	unsigned int coef = 1;
-// 	for (auto& point: *cloud){
-//         point.x = coef*point.x;
-//         point.y = coef*point.y;
-//         point.z = coef*point.z;
+	unsigned int coef = 1;
+	for (auto& point: *cloud){
+        point.x = coef*point.x;
+        point.y = coef*point.y;
+        point.z = coef*point.z;
         
-//         point.r = 0;
-//         point.g = 0;
-//         point.b = 255;
-// 	}
+        point.r = 0;
+        point.g = 0;
+        point.b = 255;
+	}
 
 // 	pcl::KdTreeFLANN<pcl::PointXYZRGB> kdtree;
 // // pcl::KdTreeFLANN<pcl::PointXYZRGBNormal> kdtree;
@@ -508,49 +522,764 @@ int main(int argc, char* argv[]){
 //     markerArray3.markers[idx2].color.a = 1.0f;
 
     
-    // std::vector<double> halfdisc_probabilities = halfdisc_criterion(cloud, K, epsilon);
     // std::vector<double> angle_probabilities = angle_criterion(cloud, K, epsilon);
+    // std::vector<double> halfdisc_probabilities = halfdisc_criterion(cloud, K, epsilon);
+    // std::vector<double> shape_probabilities = shape_criterion(cloud, K, epsilon);
 
-    // std::vector<double> probabilities = halfdisc_criterion(cloud, K, epsilon);
+    pcl::PointCloud<pcl::Normal>::Ptr normals = get_normal_vectors(cloud, K, epsilon);
+    std::map<unsigned long int, std::vector<int>> neighbours = get_neighbours(cloud, K, epsilon);
+    std::map<unsigned long int, std::vector<std::pair<int, double>>> neighbours_distances = get_neighbours_distances(cloud, K, epsilon);
+    std::vector<double> average_distances = compute_average_distances(neighbours_distances);
+
+    std::vector<double> angle_probabilities = angle_criterion(cloud, K, epsilon, normals, neighbours);
+    std::vector<double> halfdisc_probabilities = halfdisc_criterion(cloud, K, epsilon, normals, neighbours_distances, average_distances);
+    std::vector<double> shape_probabilities = shape_criterion(cloud, K, epsilon, normals, neighbours, neighbours_distances, average_distances);
+
     // std::vector<double> probabilities = angle_criterion(cloud, K, epsilon);
-    std::vector<double> probabilities = shape_criterion(cloud, K, epsilon);
+    // std::vector<double> probabilities = halfdisc_criterion(cloud, K, epsilon);
+    // std::vector<double> probabilities = shape_criterion(cloud, K, epsilon);
     
     
-    // std::vector<double> probabilities;
-    // for(unsigned long int i = 0; i < (*cloud).size(); i++){
-    //     probabilities.push_back(k_halfdisc * halfdisc_probabilities[i] + k_angle * angle_probabilities[i]);
-    // }
+    std::vector<double> probabilities;
+    for(unsigned long int i = 0; i < (*cloud).size(); i++){
+        probabilities.push_back(k_halfdisc * halfdisc_probabilities[i] + k_angle * angle_probabilities[i] + k_shape * shape_probabilities[i]);
+    }
+
+    std::vector<char> boundaries = get_boundary_points(cloud, K, epsilon, k_angle, k_halfdisc, k_shape, trashold);
 
     for(unsigned long int i = 0; i < (*cloud).size(); i++){
-        if(probabilities[i] > 1){
-            std::cerr << "ERROR: " << i << " with prob " << probabilities[i] << std::endl;
-        }
-        else if(probabilities[i] > trashold){
-            (*cloud)[i].r = 255;
-            (*cloud)[i].g = 0;
-            (*cloud)[i].b = 0;
-        }
+        // if(probabilities[i] > 1){
+        //     std::cerr << "ERROR: " << i << " with prob " << probabilities[i] << std::endl;
+        // }
+        // else if(probabilities[i] > 0.7){
+        //     (*cloud)[i].r = 255;
+        //     (*cloud)[i].g = 255;
+        //     (*cloud)[i].b = 255;
+        // }
         // else if(probabilities[i] > 0.6){
         //     (*cloud)[i].r = 255;
         //     (*cloud)[i].g = 255;
         //     (*cloud)[i].b = 0;
+        // }
+        // else if(probabilities[i] > trashold){
+        //     (*cloud)[i].r = 255;
+        //     (*cloud)[i].g = 255;
+        //     (*cloud)[i].b = 255;
+        //     // (*cloud)[i].g = 0;
+        //     // (*cloud)[i].b = 0;
         // }
         // else if(probabilities[i] > 0.4){
         //     (*cloud)[i].r = 0;
         //     (*cloud)[i].g = 255;
         //     (*cloud)[i].b = 0;
         // }
-        else{
-            (*cloud)[i].r = 0;
-            (*cloud)[i].g = 0;
+        // else{
+        //     (*cloud)[i].r = 0;
+        //     (*cloud)[i].g = 0;
+        //     (*cloud)[i].b = 255;
+        // }
+        // (*cloud)[i].r = 0;
+        // (*cloud)[i].g = 0;
+        // (*cloud)[i].b = 255;
+        if(boundaries[i] == 1){
+            // (*cloud)[i].r = 255;
+            // (*cloud)[i].g = 0;
+            // (*cloud)[i].b = 0;
+            (*cloud)[i].r = 255;
+            (*cloud)[i].g = 255;
             (*cloud)[i].b = 255;
         }
     }
 
-	ros::Rate loop_rate(4);
-    // marker_pub.publish(markerArray);
+    // std::vector<std::vector<int>> edges = get_neighbours(cloud, K, epsilon);    // neighbours
+    std::cout << "edges" << std::endl;
+    std::map<unsigned long int, std::vector<int>> edges = get_neighbours(cloud, K, epsilon);    // neighbours
+    std::vector<int> graph_points;  // boundary points
+    for(unsigned long int i = 0; i < (*cloud).size(); i++){
+        double prob = k_halfdisc * halfdisc_probabilities[i] + k_angle * angle_probabilities[i] + k_shape * shape_probabilities[i];
+        if(prob > trashold){
+            graph_points.push_back(i);
+        }
+    }
+    // std::map<unsigned long int, std::vector<std::pair<int, double>>> neighbours_distances = get_neighbours_distances(cloud, K, epsilon);
+    // std::vector<double> average_distances = compute_average_distances(neighbours_distances);
+    std::cout << "weights" << std::endl;
+    std::map<int, std::vector<double>> weights;    // weights in the format of neighbours
+    for(unsigned long int l = 0; l < graph_points.size(); l++){
+        unsigned long int i = graph_points[l];
+        // (*cloud)[i].r = 255;
+        // (*cloud)[i].g = 0;
+        // (*cloud)[i].b = 0;
+        // std::vector<double> weights;
+        // std::vector<double> w;
+        for(int j = 0; j < edges[i].size(); j++){
+            unsigned long int neighbour = edges[i][j];
+            if(std::find(graph_points.begin(), graph_points.end(), neighbour) != graph_points.end()){
+                double w_prob = 2 - probabilities[i] - probabilities[neighbour];
+                // std::cout << "w_prob: " << w_prob;
+                double w_density = (2 * vect_norm((*cloud)[i], (*cloud)[neighbour])) / (average_distances[i] + average_distances[neighbour]);
+                // std::cout << " w_density: " << w_density << std::endl;
+                double weight = w_prob + w_density;
+                // weights.push_back(weight);
+                // weights[neighbour].insert(weight);
+                // weights.insert({neighbour, weight});
+                weights[i].push_back(weight);
+                // if(w_prob < 1.1 && w_density < 1){
+                //     (*cloud)[i].r = 255;
+                //     (*cloud)[i].g = 255;
+                //     (*cloud)[i].b = 0;
+                // }
+            }
+        }
+        // weights[i].push_back(weights);
+    }
+    std::vector<Edge> graph;    // edges
+    std::cout << "graph" << std::endl;
+    for(int i = 0; i < graph_points.size(); i++){
+        auto edge_from = graph_points[i];
+        for(int j = 0; j < edges[edge_from].size(); j++){
+            auto edge_to = edges[edge_from][j];
+            if(std::find(graph_points.begin(), graph_points.end(), edge_to) != graph_points.end()){
+                if(std::find_if(graph.begin(), graph.end(), [edge_from, edge_to](auto edge){ return ( (edge_from == edge.from && edge_to == edge.to) || (edge_from == edge.to && edge_to == edge.from) ); }) == graph.end()){
+                    int l = edge_from; //graph_points[i];
+                    Edge edge;
+                    edge.from = l;
+                    edge.to = edges[l][j];
+                    edge.weight = weights[l][j];
+                    graph.push_back(edge);
+                }
+            }
+        }
+    }
+    std::cout << "sortion" << std::endl;
+    std::sort(graph.begin(), graph.end(), [](auto a, auto b){return a.weight < b.weight;});
+    std::vector<std::vector<Edge>> components_edges;
+    std::vector<std::vector<int>> components_points;
+    std::cout << "points components" << std::endl;
+  	for(int i = 0; i < graph_points.size(); i++){
+      	std::vector<int> vc;
+        vc.push_back(graph_points[i]);
+        components_points.push_back(vc);
+	}
+    std::cout << "edges components" << std::endl;
+    for(int i = 0; i < graph.size(); i++){
+        std::vector<Edge> vec;
+        components_edges.push_back(vec);
+    }
+    std::cout << "MSG" << std::endl;
+    std::cout << "Total edges to process: " << components_edges.size() << std::endl;
+    int i = 0;
+    int cont = 0;
+    int iff = 0;
+    int elsee = 0;
+    for(Edge edge : graph){
+        i++;
+        if(i % 1000 == 0){
+            std::cout << "i: " << components_edges.size() - i << std::endl;
+        }
+        // std::cout << "in" << std::endl;
+        int idx_from = get_component_idx(components_points, edge.from);
+        // std::cout << "after idx from" << std::endl;
+        int idx_to = get_component_idx(components_points, edge.to);
+        if(idx_to == -1 || idx_from == -1){
+            cont++;
+            continue;
+        }
+        // std::cout << "from " << edge.from << " at " << idx_from << " to " << edge.to << " at " << idx_to << std::endl;
+        // std::cout << "points length " << components_points.size() << " edges length " << components_edges.size() << std::endl;
+        // for(auto v : components_edges){
+        // 	for(auto e : v){
+        //     	e.print();
+        //     }
+        //     std::cout << "------------" << std::endl;
+        // }
+        // std::cout << "============" << std::endl;
+        if(idx_from != idx_to){
+            iff++;
+            // std::cout << "if" << std::endl;
+            auto v = components_points[idx_to];
+        	// components_points[idx_from].insert(components_points[idx_from].end(), components_points[idx_to].begin(), components_points[idx_to].end());
+            components_points[idx_from].insert(components_points[idx_from].end(), v.begin(), v.end());
+            // std::cout << "before erase" << std::endl;
+            components_points.erase(components_points.begin() + idx_to);
+            // components_points[idx_to].clear();
+            
+            // std::cout << "between" << std::endl;
+            // if(true){//!components_edges[idx_from].empty()){
+            	components_edges[idx_from].push_back(edge);
+                // Edge reverse_edge;
+                // reverse_edge.from = edge.to;
+                // reverse_edge.to = edge.from;
+                // reverse_edge.weight = edge.weight;
+                // components_edges[idx_from].push_back(reverse_edge);
+                auto w = components_edges[idx_to];
+            	// components_edges[idx_from].insert(components_edges[idx_from].end(), components_edges[idx_to].begin(), components_edges[idx_to].end());
+                components_edges[idx_from].insert(components_edges[idx_from].end(), w.begin(), w.end());
+            	components_edges.erase(components_edges.begin() + idx_to);
+                // components_edges[idx_to].clear();
+            // }
+            // else{
+            // 	components_edges[idx_from].push_back(edge);
+            // }
+        }
+        else{
+            elsee++;
+            // continue;
+            // TODO connecting points in same component
+            // std::cout << "else" << std::endl;
+            double d = 0.0;
+            auto component_num = components_edges[idx_from];
+            for(int i = 0; i < component_num.size(); i++){
+                int from = component_num[i].from;
+                int to = component_num[i].to;
+                int idx = std::find_if(neighbours_distances[from].begin(), neighbours_distances[from].end(), [to](std::pair<int, double> a) { return a.first == to;}) - neighbours_distances[from].begin();
+                d += neighbours_distances[from][idx].second;
+            }
+            d /= component_num.size();
+            double e = (2 * M_PI * epsilon) / d;
+            std::cout << "e: " << e << ", d: " << d << std::endl;
+            // std::cout << "cond: " << components_edges[idx_from].size() + components_edges[idx_to].size() << std::endl;
+            // if(components_edges[idx_from].size() + components_edges[idx_to].size() > e){
+            if(components_edges[idx_from].size() > e){
+                std::cout << "cycle size: " << components_edges[idx_from].size() << std::endl;
+                // std::cout << "cond ok" << std::endl;
+                // components_points[idx_from].insert(components_points[idx_from].end(), components_points[idx_to].begin(), components_points[idx_to].end());
+                // std::cout << "before erase" << std::endl;
+                // components_points.erase(components_points.begin() + idx_to);
+                
+                // std::cout << "between" << std::endl;
+                // if(true){//!components_edges[idx_from].empty()){
+            	components_edges[idx_from].push_back(edge);
+                // std::cout << "1" << std::endl;
+                // Edge reverse_edge;
+                // reverse_edge.from = edge.to;
+                // reverse_edge.to = edge.from;
+                // reverse_edge.weight = edge.weight;
+                // // std::cout << "2" << std::endl;
+                // components_edges[idx_from].push_back(reverse_edge);
+                // std::cout << "3" << std::endl;
+
+            	// components_edges[idx_from].insert(components_edges[idx_from].end(), components_edges[idx_to].begin(), components_edges[idx_to].end());
+            	// std::cout << "4" << std::endl;
+                // components_edges.erase(components_edges.begin() + idx_to);
+                // std::cout << "5" << std::endl;
+            }
+        }
+        // std::cout << "----------" << std::endl;
+    }
+    std::cout << "iff: " << iff << std::endl;
+    std::cout << "elsee: " << elsee << std::endl;
+    std::cout << "Points skipped: " << cont << std::endl;
+    std::cout << "DONE" << std::endl;
+    // std::cout << "========== COMPONENTS ==========" << std::endl;
+    visualization_msgs::MarkerArray markerArray;
+    // for(auto vec : components_edges){
+    for(int i = 0; i < components_edges.size(); i++){
+        // for(auto edge : vec){
+        for(int j = 0; j < components_edges[i].size(); j++){
+            auto edge = components_edges[i][j];
+        	// edge.print();
+            visualization_msgs::Marker marker;
+            marker.header.frame_id = "base_frame";
+            marker.header.stamp = ros::Time::now();
+            marker.action = visualization_msgs::Marker::ADD;
+            marker.id = i*10000 + j*3;
+            marker.type = visualization_msgs::Marker::ARROW;
+            marker.scale.x = 0.003;
+            marker.scale.y = 0.005;
+//             marker.scale.z = 0.2;
+            marker.color.g = 1.0f;
+            marker.color.a = 1.0;
+//             marker.pose.position.x = (*cloud)[i].x;
+//             marker.pose.position.y = (*cloud)[i].y;
+//             marker.pose.position.z = (*cloud)[i].z;
+            geometry_msgs::Point p0;
+            p0.x = (*cloud)[edge.from].x;
+            p0.y = (*cloud)[edge.from].y;
+            p0.z = (*cloud)[edge.from].z;
+            geometry_msgs::Point p1;
+            p1.x = (*cloud)[edge.to].x;
+            p1.y = (*cloud)[edge.to].y;
+            p1.z = (*cloud)[edge.to].z;
+            marker.points.push_back(p0);
+            marker.points.push_back(p1);
+            markerArray.markers.push_back(marker);
+        }
+        // std::cout << "----------" << std::endl;
+    }
+    std::cout << "edges count " << components_edges[0].size() << std::endl;
+    std::cout << "total edges count " << components_edges.size() << std::endl;
+
+    std::vector<int> visited_points;
+    std::vector<std::vector<Edge>> boundary_edges;
+    std::vector<int> boundary_points_start;
+    std::vector<int> boundary_points_end;
+    for(int i = 0; i < components_points.size(); i++){
+        auto vec_edges = components_edges[i];
+        auto vec_points = components_points[i];
+        if(vec_edges.size() == 0){
+            continue;
+        }
+        std::vector<int> points_colors;
+        // 0 = white, 1 = grey, 2 = black;
+        for(int j = 0; j < vec_points.size(); j++){
+            points_colors.push_back(0);
+        }
+        // std::vector<int> visited_points;
+        std::queue<int> queue;
+        std::vector<Edge> backwards_edges;
+        queue.push(vec_points[0]);
+        points_colors[0] = 1;
+        while(!queue.empty()){
+            // std::cout << "while start" << std::endl;
+            int point = queue.front();
+            queue.pop();
+            points_colors[std::find(vec_points.begin(), vec_points.end(), point) - vec_points.begin()] = 2;
+            // (*cloud)[point].r = 255;
+            // (*cloud)[point].g = 0;
+            // (*cloud)[point].b = 0;
+            for(int j = 0; j < neighbours[point].size(); j++){
+                // std::cout << "for each neighbour" << std::endl;
+                auto neigh = neighbours[point][j];
+                // std::cout << "before if" << std::endl;
+                // auto itt = std::find(vec_points.begin(), vec_points.end(), neigh) - vec_points.begin();
+                // if(points_colors[itt] == 1){
+                //         std::cout << "END OF BFS - outer" << std::endl;
+                //         boundary_points_start.push_back(point);
+                //         std::queue<int> empty;
+                //         std::swap( queue, empty );
+                //         std::cout << "before break" << std::endl;
+                //         break;
+                //     }
+                if(std::find_if(vec_edges.begin(), vec_edges.end(), [point, neigh](Edge edge){return ((edge.from == point && edge.to == neigh) || (edge.to == point && edge.from == neigh));}) != vec_edges.end()){
+                // if(std::find_if(vec_edges.begin(), vec_edges.end(), [point, neigh](Edge edge){return (edge.from == neigh || edge.to == neigh);}) != vec_edges.end()){
+                // if(true){
+                    // neighbour point edge
+                    // std::cout << "after if" << std::endl;
+                    // std::cout << j << std::endl;
+                    auto it = std::find(vec_points.begin(), vec_points.end(), neigh) - vec_points.begin();
+                    // std::cout << "it " << it << std::endl;
+                    // std::cout << "color " << points_colors[it] << std::endl;
+                    if(points_colors[it] == 0){
+                        // std::cout << "new point" << std::endl;
+                        (*cloud)[neigh].r = 255;
+                        (*cloud)[neigh].g = 255;
+                        (*cloud)[neigh].b = 0;
+                        Edge edg;
+                        edg.from = neigh;
+                        edg.to = point;
+                        // weights are not set
+                        backwards_edges.push_back(edg);
+                        points_colors[it] = 1;
+                        queue.push(neigh);
+                        visited_points.push_back(neigh);
+                    }
+                    else if(points_colors[it] == 1){
+                        std::cout << "END OF BFS" << std::endl;
+                        boundary_points_start.push_back(point);
+                        boundary_points_end.push_back(neigh);
+                        std::queue<int> empty;
+                        std::swap( queue, empty );
+                        std::cout << "before break" << std::endl;
+                        break;
+                    }
+                }
+            }
+            // std::cout << "--- 1 ---" << std::endl;
+            // points_colors[std::find(vec_points.begin(), vec_points.end(), point) - vec_points.begin()] = 2;
+            // std::cout << "--- 2 ---" << std::endl;
+        }
+        // std::cout << "--- 3 ---" << std::endl;
+        boundary_edges.push_back(backwards_edges);
+        // std::cout << "--- 4 ---" << std::endl;
+    }
+    std::cout << "len " << boundary_points_start.size() << std::endl;
+    std::cout << "colorisation" << std::endl;
+    // for(int i = 0; i < boundary_edges.size(); i++){
+    for(int i = 0; i < boundary_points_start.size(); i++){
+        std::cout << "for start" << std::endl;
+        auto start = boundary_points_start[i];
+        auto end = boundary_points_end[i];
+        std::cout << "after start init: " << start << std::endl;
+        (*cloud)[start].r = 255;
+        (*cloud)[start].g = 0;
+        (*cloud)[start].b = 0;
+        (*cloud)[end].r = 255;
+        (*cloud)[end].g = 0;
+        (*cloud)[end].b = 255;
+        if(end == start){
+            (*cloud)[start].r = 0;
+            (*cloud)[start].g = 255;
+            (*cloud)[start].b = 255;
+        }
+        std::cout << "before 2 start" << std::endl;
+        std::cout << "edges size: " << boundary_edges[i].size() << std::endl;
+        for(int j = 0; j < boundary_edges[i].size(); j++){
+            std::cout << "for 2 start" << std::endl;
+            auto idx = std::find_if(boundary_edges[i].begin(), boundary_edges[i].end(), [start](Edge edge){return (edge.from == start);}) - boundary_edges[i].begin();// - 1;
+            std::cout << "after idx assignment: " << idx << std::endl;
+            start = boundary_edges[i][idx].to;
+            std::cout << "after start assignment: " << start << std::endl;
+            (*cloud)[start].r = 255;
+            (*cloud)[start].g = 0;
+            (*cloud)[start].b = 0;
+            (*cloud)[end].r = 255;
+            (*cloud)[end].g = 0;
+            (*cloud)[end].b = 255;
+            if(end == start){
+                (*cloud)[start].r = 0;
+                (*cloud)[start].g = 255;
+                (*cloud)[start].b = 255;
+            }
+        }
+
+    }
+
+    // for(auto w : weights){
+    //     for(auto e : w){
+    //         std::cout << e << std::endl;
+    //     }
+    // }
+//     visualization_msgs::MarkerArray markerArray2;
+//     for(int i = 0; i < graph.size() && i < 1000; i++){
+//         // for(auto edge : vec){
+//             Edge edge = graph[i];
+//         	edge.print();
+//             visualization_msgs::Marker marker;
+//             marker.header.frame_id = "base_frame";
+//             marker.header.stamp = ros::Time::now();
+//             marker.action = visualization_msgs::Marker::ADD;
+//             marker.id = i;
+//             marker.type = visualization_msgs::Marker::ARROW;
+//             marker.scale.x = 0.003;
+//             marker.scale.y = 0.005;
+// //             marker.scale.z = 0.2;
+//             marker.color.r = 1.0f;
+//             marker.color.a = 1.0;
+// //             marker.pose.position.x = (*cloud)[i].x;
+// //             marker.pose.position.y = (*cloud)[i].y;
+// //             marker.pose.position.z = (*cloud)[i].z;
+//             geometry_msgs::Point p0;
+//             p0.x = (*cloud)[edge.from].x;
+//             p0.y = (*cloud)[edge.from].y;
+//             p0.z = (*cloud)[edge.from].z;
+//             geometry_msgs::Point p1;
+//             p1.x = (*cloud)[edge.to].x;
+//             p1.y = (*cloud)[edge.to].y;
+//             p1.z = (*cloud)[edge.to].z;
+//             marker.points.push_back(p0);
+//             marker.points.push_back(p1);
+//             markerArray2.markers.push_back(marker);
+//         // }
+//         // std::cout << "----------" << std::endl;
+//     }
+
+    // std::cout << "==============================" << std::endl;
+    // for(auto vec : components_points){
+    // 	for(auto i : vec){
+    //     	std::cout << i << std::endl;
+    //     }
+    //     std::cout << "----------" << std::endl;
+    // }
+
+    
+    // std::map<unsigned long int, std::vector<int>> neighbours = get_neighbours(cloud, K, epsilon);
+    // pcl::PointCloud<pcl::Normal>::Ptr normals = get_normal_vectors(cloud, K, epsilon);
+    // std::map<unsigned long int, std::vector<std::pair<int, double>>> graph = get_neighbours_distances(cloud, K, epsilon);
+    // std::vector<double> average_distances = compute_average_distances(graph);
+    // std::vector<Point> mi_p = compute_mi(cloud, graph, average_distances, normals);
+    // std::vector<Point> mi_p_prime = project_mis(mi_p, normals, cloud);
+
+    // Point p = (*cloud)[q];
+    // visualization_msgs::MarkerArray markerArray2;
+    // visualization_msgs::MarkerArray markerArray3;
+
+    // for(int i = 0; i < (*cloud).size() && i < 5000; i++){
+    //     auto w = [] (Point p, Point q) -> double { 
+    //             return 1;// / vect_norm(p, q); 
+    //         };
+    //     double c11 = 0;
+    //     double c12 = 0;
+    //     double c13 = 0;
+    //     double c22 = 0;
+    //     double c23 = 0;
+    //     double c33 = 0;
+    //     for(int j = 0; j < neighbours[i].size(); j++){
+    //         Point v = (*cloud)[neighbours[i][j]];
+    //         double d1 = mi_p[i].x - v.x;
+    //         double d2 = mi_p[i].y - v.y;
+    //         double d3 = mi_p[i].z - v.z;
+    //         double wq = w((*cloud)[i], v);
+    //         c11 += wq*d1*d1;
+    //         c12 += wq*d1*d2;
+    //         c13 += wq*d1*d3;
+    //         c22 += wq*d2*d2;
+    //         c23 += wq*d2*d3;
+    //         c33 += wq*d3*d3;
+    //     }
+    //     Eigen::MatrixXd C_p (3, 3);
+    //     C_p << c11, c12, c13, c12, c22, c23, c13, c23, c33;
+    //     Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> es;
+    //     es.compute(C_p, /* computeEigenvectors = */ false);
+    //     // SORT EIGENVALUES!!
+    //     double l1 = es.eigenvalues()[2];
+    //     double l2 = es.eigenvalues()[1];
+    //     double l3 = es.eigenvalues()[0];
+    //     // double l1 = es.eigenvalues()[0];
+    //     // double l2 = es.eigenvalues()[1];
+    //     // double l3 = es.eigenvalues()[2];
+    //     if(l1 < l2 || l1 < l3 || l2 < l3){
+    //         std::cout << l1 << ", " << l2 << ", " << l3 << std::endl;
+    //         std::cerr << "ERROR: eigenvalues are sort wrongly" << std::endl;
+    //         exit(100);
+    //     }
+    //     // std::cout << l1 << ", " << l2 << ", " << l3 << std::endl;
+    //     double alpha = l1 + l2 + l3;
+    //     // std::cout << alpha << std::endl;
+    //     Point A_p;
+    //     A_p.x = l1 / alpha;
+    //     A_p.y = l2 / alpha;
+    //     A_p.z = l3 / alpha;
+        
+    //         visualization_msgs::Marker marker;
+    //         marker.header.frame_id = "base_frame";
+    //         marker.header.stamp = ros::Time::now();
+    //         marker.action = visualization_msgs::Marker::ADD;
+    //         marker.id = i+1000;
+    //         marker.type = visualization_msgs::Marker::POINTS;
+    //         marker.color.r = 1.0f;
+    //         marker.color.g = 0.0f;
+    //         marker.color.b = 1.0f;
+    //         if(probabilities[i] > 0.7){
+    //             marker.color.r = 1.0f;
+    //             marker.color.g = 0.5f;
+    //             marker.color.b = 0.0f;
+    //         }
+    //         marker.color.a = 1.0f;
+    //         marker.scale.x = 0.005;
+    //         marker.scale.y = 0.005;
+    //         marker.scale.z = 0.005;
+    //         geometry_msgs::Point p;
+    //         p.x = A_p.x;
+    //         p.y = A_p.y;
+    //         p.z = A_p.z;
+    //         marker.points.push_back(p);
+    //         markerArray3.markers.push_back(marker);
+        
+    // }
+
+    // for(int i = 0; i < neighbours[q].size(); i++){
+    //     (*cloud)[neighbours[q][i]].r = 0;
+    //     (*cloud)[neighbours[q][i]].g = 255;
+    //     (*cloud)[neighbours[q][i]].b = 255;
+
+    //     Point t = tangent_projection(normals->points[q], (*cloud)[q], (*cloud)[neighbours[q][i]]);
+
+    //     visualization_msgs::Marker marker;
+    //     marker.header.frame_id = "base_frame";
+    //     marker.header.stamp = ros::Time::now();
+    //     marker.action = visualization_msgs::Marker::ADD;
+    //     marker.id = i;
+    //     marker.type = visualization_msgs::Marker::POINTS;
+    //     marker.color.r = 1.0f;
+    //     marker.color.g = 1.0f;
+    //     marker.color.b = 0.0f;
+    //     marker.color.a = 1.0f;
+    //     marker.scale.x = 0.005;
+    //     marker.scale.y = 0.005;
+    //     marker.scale.z = 0.005;
+    //     geometry_msgs::Point p;
+    //     p.x = t.x;
+    //     p.y = t.y;
+    //     p.z = t.z;
+    //     marker.points.push_back(p);
+    //     markerArray2.markers.push_back(marker);
+    // }
+
+    // visualization_msgs::Marker marker;
+    // marker.header.frame_id = "base_frame";
+    // marker.header.stamp = ros::Time::now();
+    // marker.action = visualization_msgs::Marker::ADD;
+    // marker.id = 666;
+    // marker.type = visualization_msgs::Marker::POINTS;
+    // marker.color.r = 0.0f;
+    // marker.color.g = 1.0f;
+    // marker.color.b = 0.0f;
+    // marker.color.a = 1.0f;
+    // marker.scale.x = 0.005;
+    // marker.scale.y = 0.005;
+    // marker.scale.z = 0.005;
+    // geometry_msgs::Point p;
+    // p.x = mi_p[q].x;
+    // p.y = mi_p[q].y;
+    // p.z = mi_p[q].z;
+    // marker.points.push_back(p);
+    // markerArray2.markers.push_back(marker);
+
+    // visualization_msgs::Marker marker2;
+    // marker2.header.frame_id = "base_frame";
+    // marker2.header.stamp = ros::Time::now();
+    // marker2.action = visualization_msgs::Marker::ADD;
+    // marker2.id = 6666;
+    // marker2.type = visualization_msgs::Marker::POINTS;
+    // marker2.color.r = 1.0f;
+    // marker2.color.g = 0.0f;
+    // marker2.color.b = 1.0f;
+    // marker2.color.a = 1.0f;
+    // marker2.scale.x = 0.005;
+    // marker2.scale.y = 0.005;
+    // marker2.scale.z = 0.005;
+
+    // p.x = mi_p_prime[q].x;
+    // p.y = mi_p_prime[q].y;
+    // p.z = mi_p_prime[q].z;
+    // marker2.points.push_back(p);
+    // markerArray2.markers.push_back(marker2);
+
+    // visualization_msgs::Marker marker3;
+    // marker3.header.frame_id = "base_frame";
+    // marker3.header.stamp = ros::Time::now();
+    // marker3.action = visualization_msgs::Marker::ADD;
+    // marker3.id = 331;
+    // marker3.type = visualization_msgs::Marker::POINTS;
+    // marker3.color.r = 1.0f;
+    // marker3.color.g = 1.0f;
+    // marker3.color.b = 1.0f;
+    // marker3.color.a = 1.0f;
+    // marker3.scale.x = 0.005;
+    // marker3.scale.y = 0.005;
+    // marker3.scale.z = 0.005;
+    // p.x = 0.66;
+    // p.y = 0.33;
+    // p.z = 0;
+    // marker3.points.push_back(p);
+    // markerArray2.markers.push_back(marker3);
+
+    // visualization_msgs::Marker marker4;
+    // marker4.header.frame_id = "base_frame";
+    // marker4.header.stamp = ros::Time::now();
+    // marker4.action = visualization_msgs::Marker::ADD;
+    // marker4.id = 332;
+    // marker4.type = visualization_msgs::Marker::POINTS;
+    // marker4.color.r = 1.0f;
+    // marker4.color.g = 0.0f;
+    // marker4.color.b = 0.0f;
+    // marker4.color.a = 1.0f;
+    // marker4.scale.x = 0.005;
+    // marker4.scale.y = 0.005;
+    // marker4.scale.z = 0.005;
+    // p.x = 0.5;
+    // p.y = 0.5;
+    // p.z = 0;
+    // marker4.points.push_back(p);
+    // markerArray2.markers.push_back(marker4);
+
+    // visualization_msgs::Marker marker5;
+    // marker5.header.frame_id = "base_frame";
+    // marker5.header.stamp = ros::Time::now();
+    // marker5.action = visualization_msgs::Marker::ADD;
+    // marker5.id = 333;
+    // marker5.type = visualization_msgs::Marker::POINTS;
+    // marker5.color.r = 0.0f;
+    // marker5.color.g = 1.0f;
+    // marker5.color.b = 0.0f;
+    // marker5.color.a = 1.0f;
+    // marker5.scale.x = 0.005;
+    // marker5.scale.y = 0.005;
+    // marker5.scale.z = 0.005;
+    // p.x = 0.33;
+    // p.y = 0.33;
+    // p.z = 0.33;
+    // marker5.points.push_back(p);
+    // markerArray2.markers.push_back(marker5);
+
+    // visualization_msgs::Marker marker6;
+    // marker6.header.frame_id = "base_frame";
+    // marker6.header.stamp = ros::Time::now();
+    // marker6.action = visualization_msgs::Marker::ADD;
+    // marker6.id = 334;
+    // marker6.type = visualization_msgs::Marker::POINTS;
+    // marker6.color.r = 0.0f;
+    // marker6.color.g = 1.0f;
+    // marker6.color.b = 1.0f;
+    // marker6.color.a = 1.0f;
+    // marker6.scale.x = 0.005;
+    // marker6.scale.y = 0.005;
+    // marker6.scale.z = 0.005;
+    // p.x = 1;
+    // p.y = 0;
+    // p.z = 0;
+    // marker6.points.push_back(p);
+    // markerArray2.markers.push_back(marker6);
+
+    // visualization_msgs::Marker marker7;
+    // marker7.header.frame_id = "base_frame";
+    // marker7.header.stamp = ros::Time::now();
+    // marker7.action = visualization_msgs::Marker::ADD;
+    // marker7.id = 335;
+    // marker7.type = visualization_msgs::Marker::POINTS;
+    // marker7.color.r = 1.0f;
+    // marker7.color.g = 1.0f;
+    // marker7.color.b = 0.0f;
+    // marker7.color.a = 1.0f;
+    // marker7.scale.x = 0.005;
+    // marker7.scale.y = 0.005;
+    // marker7.scale.z = 0.005;
+    // p.x = 0.61;
+    // p.y = 0.27;
+    // p.z = 0.11;
+    // marker7.points.push_back(p);
+    // markerArray2.markers.push_back(marker7);
+
+    // visualization_msgs::Marker marker8;
+    // marker8.header.frame_id = "base_frame";
+    // marker8.header.stamp = ros::Time::now();
+    // marker8.action = visualization_msgs::Marker::ADD;
+    // marker8.id = 336;
+    // marker8.type = visualization_msgs::Marker::POINTS;
+    // marker8.color.r = 0.0f;
+    // marker8.color.g = 0.0f;
+    // marker8.color.b = 0.0f;
+    // marker8.color.a = 1.0f;
+    // marker8.scale.x = 0.005;
+    // marker8.scale.y = 0.005;
+    // marker8.scale.z = 0.005;
+    // p.x = 0.625;
+    // p.y = 0.291;
+    // p.z = 0.08;
+    // marker8.points.push_back(p);
+    // markerArray2.markers.push_back(marker8);
+
+    // visualization_msgs::Marker marker10;
+    // marker10.header.frame_id = "base_frame";
+    // marker10.header.stamp = ros::Time::now();
+    // marker10.action = visualization_msgs::Marker::ADD;
+    // marker10.id = 338;
+    // marker10.type = visualization_msgs::Marker::POINTS;
+    // marker10.color.r = 0.0f;
+    // marker10.color.g = 0.5f;
+    // marker10.color.b = 1.0f;
+    // marker10.color.a = 1.0f;
+    // marker10.scale.x = 0.005;
+    // marker10.scale.y = 0.005;
+    // marker10.scale.z = 0.005;
+    // p.x = 0.5;
+    // p.y = 0.25;
+    // p.z = 0.25;
+    // marker10.points.push_back(p);
+    // markerArray2.markers.push_back(marker10);
+
+    // (*cloud)[q].r = 255;
+    // (*cloud)[q].g = 0;
+    // (*cloud)[q].b = 0;
+
+	
+    marker_pub.publish(markerArray);
     // marker_pub2.publish(markerArray2);
     // marker_pub3.publish(markerArray3);
+
+    std::cout << "===== DONE =====" << std::endl;
+    ros::Rate loop_rate(4);
 	while (nh.ok())
 	{
 		// pcl_conversions::toPCL(ros::Time::now(), msg->header.stamp);
