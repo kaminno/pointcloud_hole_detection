@@ -122,14 +122,14 @@ double compute_prob(Point A_p){
     // std::cout << "prob " << prob_corner_noise << std::endl;
     denominator += prob_corner_noise;
 
-    // double d_line = vect_norm(A_p, A_line);
-    // // std::cout << "d " << d_line << std::endl;
-    // // double sigma_line = 1 / (3*vect_norm(A_line, c)*vect_norm(A_line, c));
-    // // double sigma_line = (vect_norm(A_line, c)*vect_norm(A_line, c)) / 3;
-    // double sigma_line = (vect_norm(A_line, c)) / 3;
-    // // std::cout << "sigma " << sigma_line << std::endl;
-    // double prob_line = exp( (-d_line*d_line) / (sigma_line*sigma_line) );
-    // // std::cout << "prob " << prob_line << std::endl;
+    double d_line = vect_norm(A_p, A_line);
+    // std::cout << "d " << d_line << std::endl;
+    // double sigma_line = 1 / (3*vect_norm(A_line, c)*vect_norm(A_line, c));
+    // double sigma_line = (vect_norm(A_line, c)*vect_norm(A_line, c)) / 3;
+    double sigma_line = (vect_norm(A_line, c)) / 3;
+    // std::cout << "sigma " << sigma_line << std::endl;
+    double prob_line = exp( (-d_line*d_line) / (sigma_line*sigma_line) );
+    // std::cout << "prob " << prob_line << std::endl;
     // denominator += prob_line;
 
     double d_ridge = vect_norm(A_p, A_ridge);
@@ -140,7 +140,7 @@ double compute_prob(Point A_p){
     // std::cout << "sigma " << sigma_line << std::endl;
     double prob_ridge = exp( (-d_ridge*d_ridge) / (sigma_ridge*sigma_ridge) );
     // std::cout << "prob " << prob_line << std::endl;
-    denominator += prob_ridge;
+    // denominator += prob_ridge;
 
     // std::cout << prob_boundary << std::endl;
     

@@ -41,17 +41,17 @@ std::vector<char> get_boundary_points(PointCloud cloud, int K, double epsilon, d
         probabilities.push_back(prob);
         char boundary = prob > trashold ? 1 : 0;
         if(boundary == 1){
-            // (*cloud)[i].r = 255;
-            // (*cloud)[i].g = 255;
-            // (*cloud)[i].b = 255;
             (*cloud)[i].r = 255;
-            (*cloud)[i].g = 0;
-            (*cloud)[i].b = 0;
+            (*cloud)[i].g = 255;
+            (*cloud)[i].b = 255;
+            // (*cloud)[i].r = 0;
+            // (*cloud)[i].g = 255;
+            // (*cloud)[i].b = 0;
         }
         else{
-            (*cloud)[i].r = 0;
-            (*cloud)[i].g = 0;
-            (*cloud)[i].b = 255;
+            // (*cloud)[i].r = 0;
+            // (*cloud)[i].g = 0;
+            // (*cloud)[i].b = 255;
         }
         ret.push_back(boundary);
     }
@@ -68,6 +68,8 @@ std::vector<char> get_boundary_points(PointCloud cloud, int K, double epsilon, d
     std::vector<unsigned long int> points_to_remove;
     std::vector<unsigned long int> changed_points;
     
+
+    std::map<unsigned long int, std::vector<int>> msg_neighbours = get_neighbours(cloud, K, epsilon);
     while(change){
         change = false;
         // double idx1 = -1;
@@ -103,8 +105,11 @@ std::vector<char> get_boundary_points(PointCloud cloud, int K, double epsilon, d
             double translation_z = 0;
 
             std::vector<Point> transformed_points;
-            for(unsigned long j = 0; j < neighbours[i].size(); j++){
-                Point p = tangent_projection(normals->points[i], (*cloud)[i], (*cloud)[neighbours[i][j]]);
+            for(unsigned long int j = 0; j < msg_neighbours[i].size(); j++){
+                // if(std::find(boundary_points.begin(), boundary_points.end(), msg_neighbours[i][j]) == boundary_points.end()){
+                //     continue;
+                // }
+                Point p = tangent_projection(normals->points[i], (*cloud)[i], (*cloud)[msg_neighbours[i][j]]);
                 double phi = acos(c/sqrt(a*a + b*b + c*c));
 
                 Point nor;
@@ -114,7 +119,7 @@ std::vector<char> get_boundary_points(PointCloud cloud, int K, double epsilon, d
                 Point p_r = rotate_point(phi, p, normals->points[i], nor);
                 transformed_points.push_back(p_r);
 
-                if((*cloud)[neighbours[i][j]].x == (*cloud)[i].x && (*cloud)[neighbours[i][j]].y == (*cloud)[i].y && (*cloud)[neighbours[i][j]].z == (*cloud)[i].z){
+                if((*cloud)[msg_neighbours[i][j]].x == (*cloud)[i].x && (*cloud)[msg_neighbours[i][j]].y == (*cloud)[i].y && (*cloud)[msg_neighbours[i][j]].z == (*cloud)[i].z){
                     translation_x = p_r.x;
                     translation_y = p_r.y;
                     translation_z = p_r.z;
@@ -128,7 +133,7 @@ std::vector<char> get_boundary_points(PointCloud cloud, int K, double epsilon, d
             }
             std::vector<double> absolute_angles;
             std::vector<double> absolute_angles_sorted;
-            for(unsigned long j = 0; j < neighbours[i].size(); j++){
+            for(unsigned long j = 0; j < msg_neighbours[i].size(); j++){
                 double angle = atan2(transformed_points[j].y, transformed_points[j].x) + M_PI;
                 if(angle > 2*M_PI){
                     angle = 2*M_PI;
@@ -229,11 +234,11 @@ std::vector<char> get_boundary_points(PointCloud cloud, int K, double epsilon, d
             bool ok2 = false;
             for(unsigned long int j = 0; j < boundary_points.size(); j++){
                 // if(boundary_points[j] == neighbours[l][idx1]){
-                if(boundary_points[j] == neighbours[i][idx1]){
+                if(boundary_points[j] == msg_neighbours[i][idx1]){
                     ok1 = true;
                 }
                 // if(boundary_points[j] == neighbours[l][idx2]){
-                if(boundary_points[j] == neighbours[i][idx2]){
+                if(boundary_points[j] == msg_neighbours[i][idx2]){
                     ok2 = true;
                 }
                 if(ok1 && ok2){
@@ -266,38 +271,38 @@ std::vector<char> get_boundary_points(PointCloud cloud, int K, double epsilon, d
     std::cout << boundary_points.size() << std::endl;
 
     // weigth creating; idx 0 corresponds to point at boundary_points idx 0
-    std::vector<std::map<int, double>> edge_weights;
-    for(unsigned long int l = 0; l < boundary_points.size(); l++){
-        unsigned long int i = boundary_points[l];
-        (*cloud)[i].r = 255;
-        (*cloud)[i].g = 0;
-        (*cloud)[i].b = 0;
-        // std::vector<double> weights;
-        std::map<int, double> weights;
-        for(int j = 0; j < neighbours[i].size(); j++){
-            unsigned long int neighbour = neighbours[i][j];
-            if(std::find(boundary_points.begin(), boundary_points.end(), neighbour) != boundary_points.end()){
-                double w_prob = 2 - probabilities[i] - probabilities[neighbour];
-                // std::cout << "w_prob: " << w_prob;
-                double w_density = (2 * vect_norm((*cloud)[i], (*cloud)[neighbour])) / (average_distances[i] + average_distances[neighbour]);
-                // std::cout << " w_density: " << w_density << std::endl;
-                double weight = w_prob + w_density;
-                // weights.push_back(weight);
-                // weights[neighbour].insert(weight);
-                weights.insert({neighbour, weight});
-                // if(w_prob < 1.1 && w_density < 1){
-                //     (*cloud)[i].r = 255;
-                //     (*cloud)[i].g = 255;
-                //     (*cloud)[i].b = 0;
-                // }
-            }
-        }
-        // std::cout << "=== total edges: " << weights.size() << std::endl;
-        edge_weights.push_back(weights);
-    }
+    // std::vector<std::map<int, double>> edge_weights;
+    // for(unsigned long int l = 0; l < boundary_points.size(); l++){
+    //     unsigned long int i = boundary_points[l];
+    //     // (*cloud)[i].r = 255;
+    //     // (*cloud)[i].g = 0;
+    //     // (*cloud)[i].b = 0;
+    //     // std::vector<double> weights;
+    //     std::map<int, double> weights;
+    //     for(int j = 0; j < neighbours[i].size(); j++){
+    //         unsigned long int neighbour = neighbours[i][j];
+    //         if(std::find(boundary_points.begin(), boundary_points.end(), neighbour) != boundary_points.end()){
+    //             double w_prob = 2 - probabilities[i] - probabilities[neighbour];
+    //             // std::cout << "w_prob: " << w_prob;
+    //             double w_density = (2 * vect_norm((*cloud)[i], (*cloud)[neighbour])) / (average_distances[i] + average_distances[neighbour]);
+    //             // std::cout << " w_density: " << w_density << std::endl;
+    //             double weight = w_prob + w_density;
+    //             // weights.push_back(weight);
+    //             // weights[neighbour].insert(weight);
+    //             weights.insert({neighbour, weight});
+    //             // if(w_prob < 1.1 && w_density < 1){
+    //             //     (*cloud)[i].r = 255;
+    //             //     (*cloud)[i].g = 255;
+    //             //     (*cloud)[i].b = 0;
+    //             // }
+    //         }
+    //     }
+    //     // std::cout << "=== total edges: " << weights.size() << std::endl;
+    //     edge_weights.push_back(weights);
+    // }
 
-    std::vector<std::vector<int>> component_forest;
-    std::vector<std::vector<std::pair<int, int>>> forest_edges;
+    // std::vector<std::vector<int>> component_forest;
+    // std::vector<std::vector<std::pair<int, int>>> forest_edges;
     // for(int l = 0; l < boundary_points.size(); l++){
     //     int i = boundary_points[l];
     //     // find out if point is not in component_fofest
@@ -332,13 +337,13 @@ std::vector<char> get_boundary_points(PointCloud cloud, int K, double epsilon, d
     //     break;
     // }
 
-    for(int i = 0; i < component_forest.size(); i++){
-        for(int j = 0; j < component_forest[i].size(); j++){
-            (*cloud)[i].r = 255;
-            (*cloud)[i].g = 255;
-            (*cloud)[i].b = 0;
-        }
-    }
+    // for(int i = 0; i < component_forest.size(); i++){
+    //     for(int j = 0; j < component_forest[i].size(); j++){
+    //         (*cloud)[i].r = 255;
+    //         (*cloud)[i].g = 255;
+    //         (*cloud)[i].b = 0;
+    //     }
+    // }
     
     // return boundary_points;
     // return probabilities;

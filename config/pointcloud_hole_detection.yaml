@@ -1,4 +1,4 @@
-K: 15
+K: 19
 # K_normal_estimation: 10
 epsilon: 0.1
 # K=29, eps=0.3 works pretty good for angles
@@ -27,5 +27,7 @@ trashold: 0.5
 k_angle: 0.33
 k_halfdisc: 0.33
 k_shape: 0.33
+
+weight_boundary: 1.8
 
 q: 0

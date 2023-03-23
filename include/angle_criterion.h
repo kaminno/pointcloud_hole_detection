@@ -15,6 +15,7 @@ std::vector<double> get_probabilities(std::vector<double> gaps, std::map<unsigne
     auto start = std::chrono::high_resolution_clock::now();
     for(unsigned long int i = 0; i < gaps.size(); i++){
         double not_prob = ( gaps[i] - (2 * M_PI / neighbours[i].size())) / (M_PI - (2 * M_PI / neighbours[i].size()));
+        // double not_prob = ( gaps[i] - (2 * M_PI / neighbours[i].size())) / (2*M_PI - (2 * M_PI / neighbours[i].size()));
         double prob = fmin(not_prob, 1);
         probs.push_back(prob);
     }

@@ -28,7 +28,7 @@ class Edge{
 public:
     int from;
     int to;
-    int weight;
+    double weight = 0.0;
     void print(){
         std::cout << "(" << from << ", " << to << ", " << weight << ")" << std::endl;
     }
@@ -49,6 +49,53 @@ int get_component_idx(std::vector<std::vector<int>> components_points, int point
         }
     return -1;
 };
+
+int get_cycle_length(std::vector<Edge> component_edges, int start, int end){
+	std::vector<Edge> visited_edges;
+    std::queue<int> q;
+    q.push(start);
+    while(!q.empty()){
+    	int point = q.front();
+        if(point == end){
+        	break;
+        }
+        q.pop();
+    	for(int i = 0; i < component_edges.size(); i++){
+        	Edge edge = component_edges[i];
+        	//if(std::find_if(component_edges.begin(), component_edges.end(), [](auto e){ return (e.from == point || e.to == point); }) != component_edges.end()){
+            if(edge.from == point || edge.to == point){
+//            	q.push(node);
+                Edge e;
+                e.from = point;
+                e.to = edge.from == point ? edge.to : edge.from;
+                q.push(e.to);
+                visited_edges.push_back(e);
+            }
+        }
+    }
+    
+    int length = 0;
+    int i = 0;
+    int s = end;
+    bool f = true;
+    while(f && i < 1000){
+    	for(Edge e : visited_edges){
+        	if(e.to == s){
+            	length++;
+                s = e.from;
+                break;
+            }
+            if(s == start){
+            	f = false;
+                break;
+            }
+        }
+        
+        i++;
+    }
+    
+	return length;
+}
 
 std::map<unsigned long int, std::vector<int>> get_neighbours(PointCloud cloud, unsigned int K, double epsilon){
     std::cout << "get_neighbours" << std::endl;
