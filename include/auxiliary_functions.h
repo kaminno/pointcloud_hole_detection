@@ -26,8 +26,8 @@ typedef pcl::PointCloud<Point>::Ptr PointCloud;
 
 class Edge{
 public:
-    int from;
-    int to;
+    int from = -2;
+    int to = -2;
     double weight = 0.0;
     void print(){
         std::cout << "(" << from << ", " << to << ", " << weight << ")" << std::endl;

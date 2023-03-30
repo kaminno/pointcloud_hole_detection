@@ -3,6 +3,9 @@ K: 19
 epsilon: 0.1
 # K=29, eps=0.3 works pretty good for angles
 
+K_2: 13
+epsilon_2: 0.1
+
 abs_path: "/home/honzuna/"
 # file_name: "pointcloud.pcd"
 file_name: "sphere.pcd"
@@ -31,3 +34,10 @@ k_shape: 0.33
 weight_boundary: 1.8
 
 q: 0
+
+# RANSAC parameters
+
+n_ransac: 3
+k_ransac: 10
+t_ransac: 0.1
+

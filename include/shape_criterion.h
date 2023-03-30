@@ -140,7 +140,7 @@ double compute_prob(Point A_p){
     // std::cout << "sigma " << sigma_line << std::endl;
     double prob_ridge = exp( (-d_ridge*d_ridge) / (sigma_ridge*sigma_ridge) );
     // std::cout << "prob " << prob_line << std::endl;
-    // denominator += prob_ridge;
+    denominator += prob_ridge;
 
     // std::cout << prob_boundary << std::endl;
     
