@@ -1,4 +1,4 @@
-K: 19
+K: 13
 # K_normal_estimation: 10
 epsilon: 0.1
 # K=29, eps=0.3 works pretty good for angles
@@ -39,5 +39,6 @@ q: 0
 
 n_ransac: 3
 k_ransac: 10
-t_ransac: 0.1
+t_ransac: 0.005
+d_ransac: 8
 
