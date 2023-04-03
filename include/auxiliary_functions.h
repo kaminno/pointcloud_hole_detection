@@ -159,7 +159,7 @@ pcl::PointCloud<pcl::Normal>::Ptr get_normal_vectors(PointCloud cloud, unsigned 
     ne.setInputCloud (cloud);
     ne.setSearchMethod (tree);
     // ne.setKSearch(5*K);
-    ne.setKSearch(20);
+    ne.setKSearch(K);
     // ne.setRadiusSearch(5*epsilon);
     ne.compute (*cloud_normals);
 
@@ -274,6 +274,15 @@ double vect_norm(Point p1, Point p2){
     double norm = sqrt(x_*x_ + y_*y_ + z_*z_);
 
     return norm;
+}
+
+Point get_vector(Point p1, Point p2){
+    Point p;
+    p.x = p2.x - p1.x;
+    p.y = p2.y - p1.y;
+    p.z = p2.z - p1.z;
+
+    return p;
 }
 
 std::vector<double> compute_average_distances(std::map<unsigned long int, std::vector<std::pair<int, double>>> neighbours_and_distances){

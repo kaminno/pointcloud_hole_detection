@@ -38,7 +38,13 @@ q: 0
 # RANSAC parameters
 
 n_ransac: 3
-k_ransac: 10
+k_ransac: 1000
 t_ransac: 0.005
-d_ransac: 8
+# t_ransac: 0.1
+d_ransac: 1
+
+uav_min_distance: 0.01
+uav_max_distance: 0.35
+uav_min_angle: 30
+uav_min_area_width: 0.05
 
