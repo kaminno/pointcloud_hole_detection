@@ -1,9 +1,9 @@
-K: 13
+K: 11
 # K_normal_estimation: 10
 epsilon: 0.1
 # K=29, eps=0.3 works pretty good for angles
 
-K_2: 13
+K_2: 11
 epsilon_2: 0.1
 
 abs_path: "/home/honzuna/"
@@ -26,7 +26,7 @@ file_name: "sphere.pcd"
 # file_name: "uherske_hradiste/pcd/uherske_hradiste.pcd"  # 2 580 696
 # file_name: "zabreh/pcd/zabreh.pcd"  # 1 954 927
 
-trashold: 0.5
+trashold: 0.3
 k_angle: 0.33
 k_halfdisc: 0.33
 k_shape: 0.33
@@ -39,12 +39,12 @@ q: 0
 
 n_ransac: 3
 k_ransac: 1000
-t_ransac: 0.005
+t_ransac: 0.05
 # t_ransac: 0.1
 d_ransac: 1
 
 uav_min_distance: 0.01
-uav_max_distance: 0.35
+uav_max_distance: 0.1
 uav_min_angle: 30
-uav_min_area_width: 0.05
+uav_min_area_width: 0.005
 

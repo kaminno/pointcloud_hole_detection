@@ -570,9 +570,9 @@ std::vector<double> get_angle_gaps(PointCloud cloud, pcl::PointCloud<pcl::Normal
                 num4++;
             }
             double a1 = fabs(2*M_PI - fabs(absolute_angles_sorted[j]) + fabs(absolute_angles_sorted[0]));
-            a1 = a1 > M_PI ? 2*M_PI - a1 : a1;
+            // a1 = a1 > M_PI ? 2*M_PI - a1 : a1;
             double a2 = fabs(absolute_angles_sorted[j+1] - absolute_angles_sorted[j]);
-            a2 = a2 > M_PI ? 2*M_PI - a2 : a2;
+            // a2 = a2 > M_PI ? 2*M_PI - a2 : a2;
             if(j == absolute_angles_sorted.size() - 1){
                 // if(fabs(2*M_PI - fabs(absolute_angles_sorted[j]) - fabs(absolute_angles_sorted[0])) > max_angle){
                 //     // max_angle = abs(absolute_angles_sorted[j] + M_PI - absolute_angles_sorted[0]);
