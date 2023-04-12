@@ -56,6 +56,8 @@ int main(int argc, char* argv[]){
     mrs_lib::ParamLoader pl(nh, node_name);
 	unsigned int queue_length = 1000;
 	ros::Publisher pub = nh.advertise<sensor_msgs::PointCloud2>("cloud", queue_length);
+    ros::Publisher pub2 = nh.advertise<sensor_msgs::PointCloud2>("bound", queue_length);
+    ros::Publisher pub3 = nh.advertise<sensor_msgs::PointCloud2>("proj", queue_length);
     ros::Publisher marker_pub = nh.advertise<visualization_msgs::MarkerArray>("visualization_marker_array", queue_length);
     ros::Publisher marker_pub2 = nh.advertise<visualization_msgs::MarkerArray>("visualization_marker_array", queue_length);
     ros::Publisher marker_pub3 = nh.advertise<visualization_msgs::MarkerArray>("visualization_marker_array", queue_length);
@@ -390,24 +392,35 @@ sor.setLeafSize (0.1f, 0.1f, 0.1f);
         best_planes_normal.push_back(best_plane_normal);
     }
 
-    std::vector<std::vector<int>> bounds;
+    // std::vector<std::vector<int>> bounds;
+    std::vector<std::vector<Point>> bounds;
+    std::vector<std::vector<int>> bounds_indices;
+    std::vector<std::vector<Point>> rectangle_vectors;
+
     PointCloud boundary_cloud (new pcl::PointCloud<pcl::PointXYZRGB>);
+    PointCloud boundary_projections (new pcl::PointCloud<pcl::PointXYZRGB>);
     // boundary_cloud.resize
     for(int i = 0; i < boundaries.size(); i++){
         for(int j = 0; j < boundaries[i].size(); j++){
             // (*final_cloud)[boundaries[i][j]].r = 0;
             // (*final_cloud)[boundaries[i][j]].g = 0;
             // (*final_cloud)[boundaries[i][j]].b = 255;
-            boundary_cloud->push_back((*final_cloud)[boundaries[i][j]]);
+            // boundary_cloud->push_back((*final_cloud)[boundaries[i][j]]);
         }
     }
 
     for(int i = 0; i < best_planes.size(); i++){
         std::vector<int> b;
-        double min_x = 0;
-        double min_y = 0;
-        double max_x = 0;
-        double max_y = 0;
+        std::vector<Point> b_p;
+        std::vector<Point> vects;
+        // double min_x = 0;
+        // double min_y = 0;
+        // double max_x = 0;
+        // double max_y = 0;
+        double min_x = 1000.0;
+        double min_y = 1000.0;
+        double max_x = -1000.0;
+        double max_y = -1000.0;
 
         double min_x_idx = 0;
         double min_y_idx = 0;
@@ -448,11 +461,236 @@ sor.setLeafSize (0.1f, 0.1f, 0.1f);
             (*final_cloud)[idx].g = 255;
             (*final_cloud)[idx].b = 0;
         }
-        (*final_cloud)[b[0]].r = 255;
-        (*final_cloud)[b[0]].g = 0;
-        (*final_cloud)[b[0]].b = 255;
-        bounds.push_back(b);
+        // (*final_cloud)[b[0]].r = 255;
+        // (*final_cloud)[b[0]].g = 0;
+        // (*final_cloud)[b[0]].b = 255;
+
+        // (*final_cloud)[b[2]].r = 255;
+        // (*final_cloud)[b[2]].g = 100;
+        // (*final_cloud)[b[2]].b = 255;
+        // rectangle boundary
+        auto n1 = best_planes_normal[i];
+        Point n;
+        n.x = 0;
+        n.y = 0;
+        n.z = 1;
+
+        Point p_left = tangent_projection(best_planes_normal[i], best_planes_origin[i], (*final_cloud)[min_x_idx]);
+        Point p_bottom = tangent_projection(best_planes_normal[i], best_planes_origin[i], (*final_cloud)[min_y_idx]);
+        Point p_right = tangent_projection(best_planes_normal[i], best_planes_origin[i], (*final_cloud)[max_x_idx]);
+        Point p_top = tangent_projection(best_planes_normal[i], best_planes_origin[i], (*final_cloud)[max_y_idx]);
+
+        Point rect_origin;
+        rect_origin.x = (p_left.x + p_bottom.x + p_right.x + p_top.x) / 4.0;
+        rect_origin.y = (p_left.y + p_bottom.y + p_right.y + p_top.y) / 4.0;
+        rect_origin.z = (p_left.z + p_bottom.z + p_right.z + p_top.z) / 4.0;
+
+        p_left.r = 255;
+        p_left.b = 255;
+        p_left.a = 255;
+        p_bottom.r = 255;
+        p_bottom.b = 255;
+        p_bottom.a = 255;
+        p_right.r = 255;
+        p_right.b = 255;
+        p_right.a = 255;
+        p_top.r = 255;
+        p_top.b = 255;
+        p_top.a = 255;
+        rect_origin.r = 255;
+        // rect_origin.b = 255;
+        rect_origin.a = 255;
+        // if(i == 0)
+        // (*boundary_projections).push_back(p_left);
+        // // (*boundary_projections).push_back(p_bottom);
+        // if(i == 0)
+        // (*boundary_projections).push_back(p_right);
+        // (*boundary_projections).push_back(p_top);
+        // (*boundary_projections).push_back(rect_origin);
+
+        pcl::Normal normal;
+        normal.normal_x = 0;
+        normal.normal_y = 0;
+        normal.normal_z = 1;
+
+        Point norm;
+        norm.x = best_planes_normal[i].normal_x;
+        norm.y = best_planes_normal[i].normal_y;
+        norm.z = best_planes_normal[i].normal_z;
+
+        Point zero;
+        zero.x = 0;
+        zero.y = 0;
+        zero.z = 0;
+
+        double angle = acos( (n1.normal_z) / sqrt(n1.normal_x*n1.normal_x + n1.normal_y*n1.normal_y + n1.normal_z*n1.normal_z) );
+        Point p_left_projected = rotate_point(angle, p_left, n1, n);
+        // p_left_projected = tangent_projection(normal, zero, p_left_projected);
+        Point p_bottom_projected = rotate_point(angle, p_bottom, n1, n);
+        Point p_right_projected = rotate_point(angle, p_right, n1, n);
+        // p_right_projected = tangent_projection(normal, zero, p_right_projected);
+        Point p_top_projected = rotate_point(angle, p_top, n1, n);
+        Point rect_origin_projected = rotate_point(angle, rect_origin, n1, n);
+
+        p_left_projected.r = 255;
+        p_left_projected.g = 100;
+        p_left_projected.a = 255;
+        p_bottom_projected.r = 255;
+        p_bottom_projected.g = 100;
+        p_bottom_projected.a = 255;
+        p_right_projected.r = 255;
+        p_right_projected.g = 100;
+        p_right_projected.a = 255;
+        p_top_projected.r = 255;
+        p_top_projected.g = 100;
+        p_top_projected.a = 255;
+        rect_origin_projected.r = 255;
+        // rect_origin_projected.b = 255;
+        rect_origin_projected.a = 255;
+        // if(i == 0)
+        // (*boundary_projections).push_back(p_left_projected);
+        // (*boundary_projections).push_back(p_bottom_projected);
+        // if(i == 0)
+        // (*boundary_projections).push_back(p_right_projected);
+        // (*boundary_projections).push_back(p_top_projected);
+        // (*boundary_projections).push_back(rect_origin_projected);
+
+        double dist_left_to_right = p_right_projected.x - rect_origin_projected.x + rect_origin_projected.x - p_left_projected.x;
+        double dist_bottom_to_top = p_top_projected.y - rect_origin_projected.y + rect_origin_projected.y - p_bottom_projected.y;
+
+        // double dist_left_to_right = vect_norm(p_left, p_right);
+        // double dist_bottom_to_top = vect_norm(p_bottom, p_top);
+
+        Point new_p_right;
+        new_p_right.x = p_right_projected.x;
+        new_p_right.y = p_left_projected.y;
+        new_p_right.z = p_right_projected.z;
+
+        Point new_p_top;
+        new_p_top.x = p_bottom_projected.x;
+        new_p_top.y = p_top_projected.y;
+        new_p_top.z = p_top_projected.z;
+
+        new_p_right.r = 255;
+        new_p_right.g = 255;
+        new_p_right.a = 255;
+        // if(i == 0)
+        // (*boundary_projections).push_back(new_p_right);
+        new_p_top.r = 255;
+        new_p_top.g = 255;
+        new_p_top.a = 255;
+        // (*boundary_projections).push_back(new_p_top);
+
+        // pcl::Normal normal;
+        normal.normal_x = 0;
+        normal.normal_y = 0;
+        normal.normal_z = 1.0;
+
+        // Point norm;
+        norm.x = best_planes_normal[i].normal_x;
+        norm.y = best_planes_normal[i].normal_y;
+        norm.z = best_planes_normal[i].normal_z;
+
+        // p_right = rotate_point(M_PI-angle, new_p_right, normal, norm);
+        p_top = rotate_point(-angle, new_p_top, normal, norm);
+        // p_right = rotate_point(angle, new_p_right, normal, norm);
+        // p_top = rotate_point(angle, new_p_top, normal, norm);
+
+        // (*boundary_projections).push_back(p_left);
+        // (*boundary_projections).push_back(p_bottom);
+        // p_right.r = 255;
+        // p_right = rotate_point(angle, new_p_right, normal, norm);
+        // p_right.g = 255;
+        // p_right.a = 255;
+        // if(i == 0)
+        // (*boundary_projections).push_back(p_right);
+        // (*boundary_projections).push_back(p_top);
+        // (*boundary_projections).push_back(rect_origin);
+
+        // p_right = rotate_point(angle, new_p_right, normal, norm);
+        // p_right.g = 255;
+        // p_right.a = 255;
+        // if(i == 0)
+        // (*boundary_projections).push_back(p_right);
+        p_right = rotate_point(-angle, new_p_right, normal, norm);
+        p_right.g = 255;
+        p_right.a = 255;
+        // if(i == 0)
+        // (*boundary_projections).push_back(p_right);
+        // p_right = rotate_point(M_PI/2 + angle, new_p_right, normal, norm);
+        // p_right.g = 255;
+        // p_right.a = 255;
+        // if(i == 0)
+        // (*boundary_projections).push_back(p_right);
+        // p_right = rotate_point(M_PI + angle, new_p_right, normal, norm);
+        // p_right.g = 255;
+        // p_right.a = 255;
+        // if(i == 0)
+        // (*boundary_projections).push_back(p_right);
+        // p_right = rotate_point(M_PI/2 - angle, new_p_right, normal, norm);
+        // p_right.g = 255;
+        // p_right.a = 255;
+        // if(i == 0)
+        // (*boundary_projections).push_back(p_right);
+        // p_right = rotate_point(M_PI - angle, new_p_right, normal, norm);
+        // p_right.g = 255;
+        // p_right.a = 255;
+        // if(i == 0)
+        // (*boundary_projections).push_back(p_right);
+        // p_right = rotate_point((3*M_PI)/4 - angle, new_p_right, normal, norm);
+        // p_right.g = 255;
+        // p_right.a = 255;
+        // if(i == 0)
+        // (*boundary_projections).push_back(p_right);
+        // p_right = rotate_point(2*M_PI - angle, new_p_right, normal, norm);
+        // p_right.g = 255;
+        // p_right.a = 255;
+        // if(i == 0)
+        // (*boundary_projections).push_back(p_right);
+
+        Point vector_left_to_right = get_vector(p_left, p_right);
+
+        // double s_a = vect_norm(p_right, p_top);
+        // double s_b = vect_norm(p_left, p_top);
+        // double s_c = vect_norm(p_right, p_left);
+        // double v_c = sin( acos( ( s_c * s_c + s_a * s_a - s_b * s_b ) / ( 2 * s_a * s_c ) ) ) * s_a;
+        // double x = sqrt( s_b * s_b - v_c * v_c );
+        // s_a = vect_norm(p_right, p_bottom);
+        // s_b = vect_norm(p_left, p_bottom);
+        // v_c = sin( acos( ( s_c * s_c + s_a * s_a - s_b * s_b ) / ( 2 * s_a * s_c ) ) ) * s_a;
+        // double y = sqrt( s_b * s_b - v_c * v_c );
+        // double diff_y_x = y - x;
+        
+        // Point rectangle_origin;
+        // rectangle_origin.x = p_left.x + vector_left_to_right.x * (y / dist_left_to_right);
+        // rectangle_origin.y = p_left.y + vector_left_to_right.y * (y / dist_left_to_right);
+        // rectangle_origin.z = p_left.z + vector_left_to_right.z * (y / dist_left_to_right);
+        // Point vec_bottom_origin = get_vector(p_bottom, rectangle_origin);
+        // Point vec_left_origin = get_vector(p_left, rectangle_origin);
+        // // Point vec_bottom_origin = get_vector(p_bottom, rectangle_origin);
+        // Point new_top;
+        // new_top.x = p_top.x + vector_left_to_right.x * (diff_y_x / dist_left_to_right);
+        // new_top.y = p_top.y + vector_left_to_right.y * (diff_y_x / dist_left_to_right);
+        // new_top.z = p_top.z + vector_left_to_right.z * (diff_y_x / dist_left_to_right);
+
+        Point vector_bottom_to_top = get_vector(p_bottom, p_top);
+
+        vects.push_back(vector_left_to_right);
+        vects.push_back(vector_bottom_to_top);
+
+        b_p.push_back(p_left);
+        b_p.push_back(p_bottom);
+        b_p.push_back(p_right);
+        b_p.push_back(p_top);
+
+        bounds_indices.push_back(b);
+        bounds.push_back(b_p);
+        rectangle_vectors.push_back(vects);
     }
+
+    std::vector<std::vector<Point>> boundary_samples;
+    std::vector<Point> boundary_samples_origins;
+    std::vector<int> boundary_samples_indices;
 
     double sample_criterion = 2 * ( sqrt( uav_max_distance*uav_max_distance - uav_min_distance*uav_min_distance ) - (uav_min_area_width / 2) );
     std::cout << "sample criterion: " << sample_criterion << std::endl;
@@ -467,49 +705,109 @@ sor.setLeafSize (0.1f, 0.1f, 0.1f);
         }
 
         // rectangle boundary
-        Point p_left = tangent_projection(best_planes_normal[c], best_planes_origin[c], (*final_cloud)[bounds[c][0]]);
-        Point p_bottom = tangent_projection(best_planes_normal[c], best_planes_origin[c], (*final_cloud)[bounds[c][1]]);
-        Point p_right = tangent_projection(best_planes_normal[c], best_planes_origin[c], (*final_cloud)[bounds[c][2]]);
-        Point p_top = tangent_projection(best_planes_normal[c], best_planes_origin[c], (*final_cloud)[bounds[c][3]]);
+        // Point p_left = tangent_projection(best_planes_normal[c], best_planes_origin[c], (*final_cloud)[bounds[c][0]]);
+        // Point p_bottom = tangent_projection(best_planes_normal[c], best_planes_origin[c], (*final_cloud)[bounds[c][1]]);
+        // Point p_right = tangent_projection(best_planes_normal[c], best_planes_origin[c], (*final_cloud)[bounds[c][2]]);
+        // Point p_top = tangent_projection(best_planes_normal[c], best_planes_origin[c], (*final_cloud)[bounds[c][3]]);
+        Point p_left = bounds[c][0];
+        Point p_bottom = bounds[c][1];
+        Point p_right = bounds[c][2];
+        Point p_top = bounds[c][3];
+
+    //     bounds;
+    // std::vector<std::vector<int>> bounds_indices;
+    // std::vector<std::vector<Point>> rectangle_vectors;
 
         double dist_left_to_right = vect_norm(p_left, p_right);
         double dist_bottom_to_top = vect_norm(p_bottom, p_top);
 
-        Point vector_left_to_right = get_vector(p_left, p_right);
+        Point vector_left_to_right = rectangle_vectors[c][0];
+        Point vector_bottom_to_top = rectangle_vectors[c][1];
 
-        double s_a = vect_norm(p_right, p_top);
-        double s_b = vect_norm(p_left, p_top);
-        double s_c = vect_norm(p_right, p_left);
-        double v_c = sin( acos( ( s_c * s_c + s_a * s_a - s_b * s_b ) / ( 2 * s_a * s_c ) ) ) * s_a;
-        double x = sqrt( s_b * s_b - v_c * v_c );
-        s_a = vect_norm(p_right, p_bottom);
-        s_b = vect_norm(p_left, p_bottom);
-        v_c = sin( acos( ( s_c * s_c + s_a * s_a - s_b * s_b ) / ( 2 * s_a * s_c ) ) ) * s_a;
-        double y = sqrt( s_b * s_b - v_c * v_c );
-        double diff_y_x = y - x;
+        visualization_msgs::Marker marker3;
+        marker3.header.frame_id = "base_frame";
+        marker3.header.stamp = ros::Time::now();
+        marker3.action = visualization_msgs::Marker::ADD;
+        marker3.id = c;
+        marker3.type = visualization_msgs::Marker::POINTS;
+        marker3.scale.x = 0.01;
+        marker3.scale.y = 0.01;
+        marker3.scale.z = 0.01;
+        marker3.color.r = 0.0;
+        marker3.color.g = 255.0;
+        marker3.color.b = 255.0;
+        marker3.color.a = 1.0;
+
+        geometry_msgs::Point p2;
+        p2.x = p_right.x;
+        p2.y = p_right.y;
+        p2.z = p_right.z;
+        marker3.points.push_back(p2);
+        markerArray3.markers.push_back(marker3);
+
+        visualization_msgs::Marker marker4;
+        marker4.header.frame_id = "base_frame";
+        marker4.header.stamp = ros::Time::now();
+        marker4.action = visualization_msgs::Marker::ADD;
+        marker4.id = c+10;
+        marker4.type = visualization_msgs::Marker::POINTS;
+        marker4.scale.x = 0.01;
+        marker4.scale.y = 0.01;
+        marker4.scale.z = 0.01;
+        marker3.color.r = 0.0;
+        marker3.color.g = 255.0;
+        marker3.color.b = 255.0;
+        marker4.color.a = 1.0;
+
+        geometry_msgs::Point p3;
+        p3.x = p_top.x;
+        p3.y = p_top.y;
+        p3.z = p_top.z;
+        marker4.points.push_back(p3);
+        markerArray3.markers.push_back(marker4);
+
+        // Point vector_left_to_right = get_vector(p_left, p_right);
+
+        // double s_a = vect_norm(p_right, p_top);
+        // double s_b = vect_norm(p_left, p_top);
+        // double s_c = vect_norm(p_right, p_left);
+        // double v_c = sin( acos( ( s_c * s_c + s_a * s_a - s_b * s_b ) / ( 2 * s_a * s_c ) ) ) * s_a;
+        // double x = sqrt( s_b * s_b - v_c * v_c );
+        // s_a = vect_norm(p_right, p_bottom);
+        // s_b = vect_norm(p_left, p_bottom);
+        // v_c = sin( acos( ( s_c * s_c + s_a * s_a - s_b * s_b ) / ( 2 * s_a * s_c ) ) ) * s_a;
+        // double y = sqrt( s_b * s_b - v_c * v_c );
+        // double diff_y_x = y - x;
         
-        Point rectangle_origin;
-        rectangle_origin.x = p_left.x + vector_left_to_right.x * (y / dist_left_to_right);
-        rectangle_origin.y = p_left.y + vector_left_to_right.y * (y / dist_left_to_right);
-        rectangle_origin.z = p_left.z + vector_left_to_right.z * (y / dist_left_to_right);
-        Point vec_bottom_origin = get_vector(p_bottom, rectangle_origin);
+        // Point rectangle_origin;
+        // rectangle_origin.x = p_left.x + vector_left_to_right.x * (y / dist_left_to_right);
+        // rectangle_origin.y = p_left.y + vector_left_to_right.y * (y / dist_left_to_right);
+        // rectangle_origin.z = p_left.z + vector_left_to_right.z * (y / dist_left_to_right);
         // Point vec_bottom_origin = get_vector(p_bottom, rectangle_origin);
-        Point new_top;
-        new_top.x = p_top.x + vector_left_to_right.x * (diff_y_x / dist_left_to_right);
-        new_top.y = p_top.y + vector_left_to_right.y * (diff_y_x / dist_left_to_right);
-        new_top.z = p_top.z + vector_left_to_right.z * (diff_y_x / dist_left_to_right);
 
-        Point vector_bottom_to_top = get_vector(p_bottom, new_top);
+        Point rectangle_origin;
+        rectangle_origin.x = (p_left.x + p_bottom.x + p_right.x + p_top.x) / 4.0;
+        rectangle_origin.y = (p_left.y + p_bottom.y + p_right.y + p_top.y) / 4.0;
+        rectangle_origin.z = (p_left.z + p_bottom.z + p_right.z + p_top.z) / 4.0;
+        
+        Point vec_left_origin = get_vector(p_left, rectangle_origin);
+        Point vec_bottom_origin = get_vector(p_bottom, rectangle_origin);
+        // Point new_top;
+        // new_top.x = p_top.x + vector_left_to_right.x * (diff_y_x / dist_left_to_right);
+        // new_top.y = p_top.y + vector_left_to_right.y * (diff_y_x / dist_left_to_right);
+        // new_top.z = p_top.z + vector_left_to_right.z * (diff_y_x / dist_left_to_right);
+
+        // Point vector_bottom_to_top = get_vector(p_bottom, new_top);
 
         for(double sample_height_start = 0.0; sample_height_start < dist_bottom_to_top; sample_height_start += sample_criterion){
             std::cout << "sample_height_start: " << sample_height_start << " / dist_bottom_to_top: " << dist_bottom_to_top << std::endl;
             for(double sample_width_start = 0.0; sample_width_start < dist_left_to_right; sample_width_start += sample_criterion){
-                // std::cout << "sample_width_start: " << sample_width_start << " / dist_left_to_right: " << dist_left_to_right << std::endl;
+                std::cout << "sample_width_start: " << sample_width_start << " / dist_left_to_right: " << dist_left_to_right << std::endl;
 
                 int sample_max = 5;
-                int r = rand() % 255;
-                int g = rand() % 255;
-                int b = rand() % 255;
+                int r = 100 + rand() % 155;
+                int g = 100 + rand() % 155;
+                int b = 100 + rand() % 155;
                 // int r = 255;
                 // int g = 255;
                 // int b = 0;
@@ -525,7 +823,22 @@ sor.setLeafSize (0.1f, 0.1f, 0.1f);
                 h_top.z = p_bottom.z + vector_bottom_to_top.z * ( ( sample_height_start + sample_criterion ) / dist_bottom_to_top);
 
                 Point h = get_vector(h_bottom, h_top);
-                std::cout << "h = (" << h.x << ", " << h.y << ", " << h.z << ")" << std::endl;
+                // std::cout << "h = (" << h.x << ", " << h.y << ", " << h.z << ")" << std::endl;
+
+                Point w_left;
+                w_left.x = p_left.x + vector_left_to_right.x * ( sample_width_start / dist_left_to_right);
+                w_left.y = p_left.y + vector_left_to_right.y * ( sample_width_start / dist_left_to_right);
+                w_left.z = p_left.z + vector_left_to_right.z * ( sample_width_start / dist_left_to_right);
+
+                Point w_right;
+                w_right.x = p_left.x + vector_left_to_right.x * ( ( sample_width_start + sample_criterion ) / dist_left_to_right);
+                w_right.y = p_left.y + vector_left_to_right.y * ( ( sample_width_start + sample_criterion ) / dist_left_to_right);
+                w_right.z = p_left.z + vector_left_to_right.z * ( ( sample_width_start + sample_criterion ) / dist_left_to_right);
+
+                Point w = get_vector(w_left, w_right);
+                // std::cout << "w = (" << w.x << ", " << w.y << ", " << w.z << ")" << std::endl;
+
+                std::vector<Point> samples;
 
                 for(int i = 0; i < sample_max; i++){
                     double m = static_cast <double> (sample_max) ;
@@ -553,7 +866,8 @@ sor.setLeafSize (0.1f, 0.1f, 0.1f);
                     left_sample.b = b;
                     left_sample.a = 255;
 
-                    // (*final_cloud).push_back(left_sample);
+                    // std::cout << "left_sample = (" << left_sample.x << ", " << left_sample.y << ", " << left_sample.z << ")" << std::endl;
+                    (*boundary_cloud).push_back(left_sample);
                     
                     Point right_sample;
                     // right_sample.x = p_left.x + ( vector_left_to_right.x * ( ( sample_height_start + sample_criterion ) / dist_left_to_right ) );
@@ -561,466 +875,201 @@ sor.setLeafSize (0.1f, 0.1f, 0.1f);
                     right_sample.y = p_left.y + ( vector_left_to_right.y * ( ( sample_width_start + sample_criterion ) / dist_left_to_right ) );
                     right_sample.z = p_left.z + ( vector_left_to_right.z * ( ( sample_width_start + sample_criterion ) / dist_left_to_right ) );
 
-                    right_sample.x = right_sample.x + ( h.x * ( ( coef ) ) ) - vec_bottom_origin.x;
-                    right_sample.y = right_sample.y + ( h.y * ( ( coef ) ) ) - vec_bottom_origin.y;
-                    right_sample.z = right_sample.z + ( h.z * ( ( coef ) ) ) - vec_bottom_origin.z;
+                    right_sample.x = right_sample.x + ( ( sample_height_start / sample_criterion) * h.x + h.x * ( ( coef ) ) ) - vec_bottom_origin.x;
+                    right_sample.y = right_sample.y + ( ( sample_height_start / sample_criterion) * h.y + h.y * ( ( coef ) ) ) - vec_bottom_origin.y;
+                    right_sample.z = right_sample.z + ( ( sample_height_start / sample_criterion) * h.z + h.z * ( ( coef ) ) ) - vec_bottom_origin.z;
 
                     right_sample.r = r;
                     right_sample.g = g;
                     right_sample.b = b;
                     right_sample.a = 255;
 
-                    // (*final_cloud).push_back(right_sample);
+                    (*boundary_cloud).push_back(right_sample);
 
-                    visualization_msgs::Marker marker3;
-                    marker3.header.frame_id = "base_frame";
-                    marker3.header.stamp = ros::Time::now();
-                    marker3.action = visualization_msgs::Marker::ADD;
-                    marker3.id = c+10000 + 1000*sample_height_start + sample_width_start*100 + i;
-                    marker3.type = visualization_msgs::Marker::POINTS;
-                    marker3.scale.x = 0.01;
-                    marker3.scale.y = 0.01;
-                    marker3.scale.z = 0.01;
-                    marker3.color.r = r / 255.0;
-                    marker3.color.g = g / 255.0;
-                    marker3.color.b = b / 255.0;
-                    marker3.color.a = 1.0;
+                    Point bottom_sample;
 
-                    geometry_msgs::Point p2;
-                    p2.x = left_sample.x;
-                    p2.y = left_sample.y;
-                    p2.z = left_sample.z;
-                    marker3.points.push_back(p2);
-                    markerArray3.markers.push_back(marker3);
+                    bottom_sample.x = p_bottom.x + ( vector_bottom_to_top.x * ( sample_height_start / dist_bottom_to_top ) );
+                    bottom_sample.y = p_bottom.y + ( vector_bottom_to_top.y * ( sample_height_start / dist_bottom_to_top ) );
+                    bottom_sample.z = p_bottom.z + ( vector_bottom_to_top.z * ( sample_height_start / dist_bottom_to_top ) );
 
-                    visualization_msgs::Marker marker4;
-                    marker4.header.frame_id = "base_frame";
-                    marker4.header.stamp = ros::Time::now();
-                    marker4.action = visualization_msgs::Marker::ADD;
-                    marker4.id = c+10000 + 1000*sample_height_start + sample_width_start*100 + i+20;
-                    marker4.type = visualization_msgs::Marker::POINTS;
-                    marker4.scale.x = 0.01;
-                    marker4.scale.y = 0.01;
-                    marker4.scale.z = 0.01;
-                    marker4.color.r = r / 255.0;
-                    marker4.color.g = g / 255.0;
-                    marker4.color.b = b / 255.0;
-                    marker4.color.a = 1.0;
+                    bottom_sample.x = bottom_sample.x + ( ( sample_width_start / sample_criterion) * w.x + w.x * ( ( coef ) ) ) - vec_left_origin.x;
+                    bottom_sample.y = bottom_sample.y + ( ( sample_width_start / sample_criterion) * w.y + w.y * ( ( coef ) ) ) - vec_left_origin.y;
+                    bottom_sample.z = bottom_sample.z + ( ( sample_width_start / sample_criterion) * w.z + w.z * ( ( coef ) ) ) - vec_left_origin.z;
 
-                    geometry_msgs::Point p3;
-                    p3.x = right_sample.x;
-                    p3.y = right_sample.y;
-                    p3.z = right_sample.z;
-                    marker4.points.push_back(p3);
+                    bottom_sample.r = r;
+                    bottom_sample.g = g;
+                    bottom_sample.b = b;
+                    bottom_sample.a = 255;
+
+                    (*boundary_cloud).push_back(bottom_sample);
+
+                    Point top_sample;
+
+                    top_sample.x = p_bottom.x + ( vector_bottom_to_top.x * ( ( sample_height_start + sample_criterion ) / dist_bottom_to_top ) );
+                    top_sample.y = p_bottom.y + ( vector_bottom_to_top.y * ( ( sample_height_start + sample_criterion ) / dist_bottom_to_top ) );
+                    top_sample.z = p_bottom.z + ( vector_bottom_to_top.z * ( ( sample_height_start + sample_criterion ) / dist_bottom_to_top ) );
+
+                    top_sample.x = top_sample.x + ( ( sample_width_start / sample_criterion) * w.x + w.x * ( ( coef ) ) ) - vec_left_origin.x;
+                    top_sample.y = top_sample.y + ( ( sample_width_start / sample_criterion) * w.y + w.y * ( ( coef ) ) ) - vec_left_origin.y;
+                    top_sample.z = top_sample.z + ( ( sample_width_start / sample_criterion) * w.z + w.z * ( ( coef ) ) ) - vec_left_origin.z;
+
+                    top_sample.r = r;
+                    top_sample.g = g;
+                    top_sample.b = b;
+                    top_sample.a = 255;
+
+                    (*boundary_cloud).push_back(top_sample);
+
+                    samples.push_back(left_sample);
+                    samples.push_back(right_sample);
+                    samples.push_back(bottom_sample);
+                    samples.push_back(top_sample);
+
+                    // visualization_msgs::Marker marker3;
+                    // marker3.header.frame_id = "base_frame";
+                    // marker3.header.stamp = ros::Time::now();
+                    // marker3.action = visualization_msgs::Marker::ADD;
+                    // marker3.id = c+10000 + 1000*sample_height_start + sample_width_start*100 + i;
+                    // marker3.type = visualization_msgs::Marker::POINTS;
+                    // marker3.scale.x = 0.01;
+                    // marker3.scale.y = 0.01;
+                    // marker3.scale.z = 0.01;
+                    // marker3.color.r = r / 255.0;
+                    // marker3.color.g = g / 255.0;
+                    // marker3.color.b = b / 255.0;
+                    // marker3.color.a = 1.0;
+
+                    // geometry_msgs::Point p2;
+                    // p2.x = left_sample.x;
+                    // p2.y = left_sample.y;
+                    // p2.z = left_sample.z;
+                    // marker3.points.push_back(p2);
+                    // markerArray3.markers.push_back(marker3);
+
+                    // visualization_msgs::Marker marker4;
+                    // marker4.header.frame_id = "base_frame";
+                    // marker4.header.stamp = ros::Time::now();
+                    // marker4.action = visualization_msgs::Marker::ADD;
+                    // marker4.id = c+10000 + 1000*sample_height_start + sample_width_start*100 + i+20;
+                    // marker4.type = visualization_msgs::Marker::POINTS;
+                    // marker4.scale.x = 0.01;
+                    // marker4.scale.y = 0.01;
+                    // marker4.scale.z = 0.01;
+                    // marker4.color.r = r / 255.0;
+                    // marker4.color.g = g / 255.0;
+                    // marker4.color.b = b / 255.0;
+                    // marker4.color.a = 1.0;
+
+                    // geometry_msgs::Point p3;
+                    // p3.x = right_sample.x;
+                    // p3.y = right_sample.y;
+                    // p3.z = right_sample.z;
+                    // marker4.points.push_back(p3);
                     // markerArray3.markers.push_back(marker4);
 
                 }
+                Point origin;
+                origin.x = 0;
+                origin.y = 0;
+                origin.z = 0;
+                for(int i = 0; i < samples.size(); i++){
+                    origin.x += samples[i].x;
+                    origin.y += samples[i].y;
+                    origin.z += samples[i].z;
+                }
+                origin.x /= samples.size();
+                origin.y /= samples.size();
+                origin.z /= samples.size();
+
+                boundary_samples.push_back(samples);
+                boundary_samples_origins.push_back(origin);
+                boundary_samples_indices.push_back(c);
                 // break;
             }
             // break;
         }
-        // while(s < dist){
-        //     int sample_max = 50;
-            
-        //     for(int i = 0; i < sample_max; i++){
-        //         double m = static_cast <double> (sample_max) ;
-        //         double coef =  i / m;
-        //         Point new_p;
-        //         new_p.x = p_left.x + ( p.x * ( s / dist ) );
-        //         new_p.y = p_left.y + ( p.y * ( s / dist ) );
-        //         new_p.z = p_left.z + ( p.z * ( s / dist ) );
-
-        //         new_p.x = new_p.x + ( p_.x * ( ( coef ) ) ) - small_vec.x;
-        //         new_p.y = new_p.y + ( p_.y * ( ( coef ) ) ) - small_vec.y;
-        //         new_p.z = new_p.z + ( p_.z * ( ( coef ) ) ) - small_vec.z;
-
-        //         visualization_msgs::Marker marker3;
-        //         marker3.header.frame_id = "base_frame";
-        //         marker3.header.stamp = ros::Time::now();
-        //         marker3.action = visualization_msgs::Marker::ADD;
-        //         marker3.id = c+1000 + 100*s + i;
-        //         marker3.type = visualization_msgs::Marker::POINTS;
-        //         marker3.scale.x = 0.005;
-        //         marker3.scale.y = 0.005;
-        //         marker3.scale.z = 0.005;
-        //         marker3.color.r = 1.0f;
-        //         marker3.color.g = 1.0f;
-        //         marker3.color.a = 1.0;
-
-        //         geometry_msgs::Point p2;
-        //         // p2.x = new_p.x;
-        //         // p2.y = new_p.y;
-        //         // p2.z = new_p.z;
-        //         p2.x = p_top.x;
-        //         p2.y = p_top.y;
-        //         p2.z = p_top.z;
-        //         marker3.points.push_back(p2);
-        //         // markerArray3.markers.push_back(marker3);
-        //         new_p.r = 255;
-        //         new_p.b = 255;
-        //         new_p.a = 255;
-        //         (*final_cloud).push_back(new_p);
-        //         // (*boundary_cloud).push_back(new_p);
-        //     }
-        //     // if(s == dist){
-        //     //     break;
-        //     // }
-        //     s += sample_criterion;
-        //     // if(s > dist){
-        //     //     s = dist;
-        //     // }
-        // }
-
-        // double dist = vect_norm((*final_cloud)[bounds[c][0]], (*final_cloud)[bounds[c][2]]);
-        // int s_ = 0;
-        // // double s = 0;
-        // double s = sample_criterion;
-        // Point p_left = tangent_projection(best_planes_normal[c], best_planes_origin[c], (*final_cloud)[bounds[c][0]]);
-        // Point p_bottom = tangent_projection(best_planes_normal[c], best_planes_origin[c], (*final_cloud)[bounds[c][1]]);
-        // Point p_right = tangent_projection(best_planes_normal[c], best_planes_origin[c], (*final_cloud)[bounds[c][2]]);
-        // Point p_top = tangent_projection(best_planes_normal[c], best_planes_origin[c], (*final_cloud)[bounds[c][3]]);
-
-        // // Point p = get_vector((*final_cloud)[bounds[c][0]], (*final_cloud)[bounds[c][2]]);
-        // Point p = get_vector(p_left, p_right);
-
-        // if(vect_norm(p_left, p_right) < sample_criterion && vect_norm(p_bottom, p_top) < sample_criterion){
-        //     // continue;
-        //     s = dist;
-        // }
-
-        // // Point p_ = get_vector((*final_cloud)[bounds[c][1]], (*final_cloud)[bounds[c][3]]);
-        // double s_a = vect_norm(p_right, p_top);
-        // double s_b = vect_norm(p_left, p_top);
-        // double s_c = vect_norm(p_right, p_left);
-        // double v_c = sin( acos( ( s_c * s_c + s_a * s_a - s_b * s_b ) / ( 2 * s_a * s_c ) ) ) * s_a;
-        // double x = sqrt( s_b * s_b - v_c * v_c );
-        // s_a = vect_norm(p_right, p_bottom);
-        // s_b = vect_norm(p_left, p_bottom);
-        // v_c = sin( acos( ( s_c * s_c + s_a * s_a - s_b * s_b ) / ( 2 * s_a * s_c ) ) ) * s_a;
-        // double y = sqrt( s_b * s_b - v_c * v_c );
-        // double diff = y - x;
-        
-        // Point square_origin;
-        // // square_origin.x = p_left.x + p.x * (diff / dist);
-        // // square_origin.y = p_left.y + p.y * (diff / dist);
-        // // square_origin.z = p_left.z + p.z * (diff / dist);
-        // square_origin.x = p_left.x + p.x * (y / dist);
-        // square_origin.y = p_left.y + p.y * (y / dist);
-        // square_origin.z = p_left.z + p.z * (y / dist);
-        // Point small_vec = get_vector(p_bottom, square_origin);
-        // Point new_top;
-        // new_top.x = p_top.x + p.x * (diff / dist);
-        // new_top.y = p_top.y + p.y * (diff / dist);
-        // new_top.z = p_top.z + p.z * (diff / dist);
-        // // Point p_ = get_vector(p_bottom, p_top);
-        // Point p_ = get_vector(p_bottom, new_top);
-        // std::cout << "s " << s << ", dist " << dist << std::endl;
-        // while(s <= dist){
-        //     // s = s_ + sample_criterion;
-        //     // s_++;
-        //     // s += sample_criterion;
-        //     int sample_max = 50;
-            
-        //     for(int i = 0; i < sample_max; i++){
-        //         double m = static_cast <double> (sample_max) ;
-        //         double coef =  i / m;
-        //         // add random translation in the other direction on the plane (now just one point on the line)
-        //         // Point p_left = tangent_projection(best_planes_normal[c], best_planes_origin[c], (*final_cloud)[bounds[c][0]]);
-        //         // Point p_bottom = tangent_projection(best_planes_normal[c], best_planes_origin[c], (*final_cloud)[bounds[c][1]]);
-        //         // Point p_right = tangent_projection(best_planes_normal[c], best_planes_origin[c], (*final_cloud)[bounds[c][2]]);
-        //         // Point p_top = tangent_projection(best_planes_normal[c], best_planes_origin[c], (*final_cloud)[bounds[c][3]]);
-
-        //         // // Point p = get_vector((*final_cloud)[bounds[c][0]], (*final_cloud)[bounds[c][2]]);
-        //         // Point p = get_vector(p_left, p_right);
-                
-        //         Point new_p;
-        //         // new_p.x = (*final_cloud)[bounds[c][0]].x + ( p.x * ( sample_criterion / dist ) );
-        //         // new_p.y = (*final_cloud)[bounds[c][0]].y + ( p.y * ( sample_criterion / dist ) );
-        //         // new_p.z = (*final_cloud)[bounds[c][0]].z + ( p.z * ( sample_criterion / dist ) );
-        //         // new_p.x = (*final_cloud)[bounds[c][0]].x + ( p.x * ( s / dist ) );
-        //         // new_p.y = (*final_cloud)[bounds[c][0]].y + ( p.y * ( s / dist ) );
-        //         // new_p.z = (*final_cloud)[bounds[c][0]].z + ( p.z * ( s / dist ) );
-        //         new_p.x = p_left.x + ( p.x * ( s / dist ) );
-        //         new_p.y = p_left.y + ( p.y * ( s / dist ) );
-        //         new_p.z = p_left.z + ( p.z * ( s / dist ) );
-
-        //         // // Point p_ = get_vector((*final_cloud)[bounds[c][1]], (*final_cloud)[bounds[c][3]]);
-        //         // double s_a = vect_norm(p_right, p_top);
-        //         // double s_b = vect_norm(p_left, p_top);
-        //         // double s_c = vect_norm(p_right, p_left);
-        //         // double v_c = sin( acos( ( s_c * s_c + s_a * s_a - s_b * s_b ) / ( 2 * s_a * s_c ) ) ) * s_a;
-        //         // double x = sqrt( s_b * s_b - v_c * v_c );
-        //         // s_a = vect_norm(p_right, p_bottom);
-        //         // s_b = vect_norm(p_left, p_bottom);
-        //         // v_c = sin( acos( ( s_c * s_c + s_a * s_a - s_b * s_b ) / ( 2 * s_a * s_c ) ) ) * s_a;
-        //         // double y = sqrt( s_b * s_b - v_c * v_c );
-        //         // double diff = y - x;
-                
-        //         // Point square_origin;
-        //         // // square_origin.x = p_left.x + p.x * (diff / dist);
-        //         // // square_origin.y = p_left.y + p.y * (diff / dist);
-        //         // // square_origin.z = p_left.z + p.z * (diff / dist);
-        //         // square_origin.x = p_left.x + p.x * (y / dist);
-        //         // square_origin.y = p_left.y + p.y * (y / dist);
-        //         // square_origin.z = p_left.z + p.z * (y / dist);
-        //         // Point small_vec = get_vector(p_bottom, square_origin);
-        //         // Point new_top;
-        //         // new_top.x = p_top.x + p.x * (diff / dist);
-        //         // new_top.y = p_top.y + p.y * (diff / dist);
-        //         // new_top.z = p_top.z + p.z * (diff / dist);
-        //         // // Point p_ = get_vector(p_bottom, p_top);
-        //         // Point p_ = get_vector(p_bottom, new_top);
-        //         // dist = vect_norm((*final_cloud)[bounds[c][1]], (*final_cloud)[bounds[c][3]]);
-        //         // int random_num = rand() % 100;
-        //         // new_p.x = new_p.x + ( p_.x * ( ( random_num / 100 ) * dist ) );
-        //         // new_p.y = new_p.y + ( p_.y * ( ( random_num / 100 ) * dist ) );
-        //         // new_p.z = new_p.z + ( p_.z * ( ( random_num / 100 ) * dist ) );
-        //         // new_p.x = new_p.x + ( p_.x * ( ( random_num / 100.0 ) ) );
-        //         // new_p.y = new_p.y + ( p_.y * ( ( random_num / 100.0 ) ) );
-        //         // new_p.z = new_p.z + ( p_.z * ( ( random_num / 100.0 ) ) );
-        //         // new_p.x = new_p.x + ( p_.x * ( ( coef ) ) );
-        //         // new_p.y = new_p.y + ( p_.y * ( ( coef ) ) );
-        //         // new_p.z = new_p.z + ( p_.z * ( ( coef ) ) );
-        //         new_p.x = new_p.x + ( p_.x * ( ( coef ) ) ) - small_vec.x;
-        //         new_p.y = new_p.y + ( p_.y * ( ( coef ) ) ) - small_vec.y;
-        //         new_p.z = new_p.z + ( p_.z * ( ( coef ) ) ) - small_vec.z;
-
-        //         visualization_msgs::Marker marker3;
-        //         marker3.header.frame_id = "base_frame";
-        //         marker3.header.stamp = ros::Time::now();
-        //         marker3.action = visualization_msgs::Marker::ADD;
-        //         marker3.id = c+1000 + 100*s + i;
-        //         marker3.type = visualization_msgs::Marker::POINTS;
-        //         marker3.scale.x = 0.005;
-        //         marker3.scale.y = 0.005;
-        //         marker3.scale.z = 0.005;
-        //         marker3.color.r = 1.0f;
-        //         marker3.color.g = 1.0f;
-        //         marker3.color.a = 1.0;
-
-        //         geometry_msgs::Point p2;
-        //         // p2.x = new_p.x;
-        //         // p2.y = new_p.y;
-        //         // p2.z = new_p.z;
-        //         p2.x = p_top.x;
-        //         p2.y = p_top.y;
-        //         p2.z = p_top.z;
-        //         marker3.points.push_back(p2);
-        //         // markerArray3.markers.push_back(marker3);
-        //         new_p.r = 255;
-        //         new_p.g = 255;
-        //         new_p.a = 255;
-        //         (*final_cloud).push_back(new_p);
-        //         // (*boundary_cloud).push_back(new_p);
-        //     }
-        //     // if(s == dist){
-        //     //     break;
-        //     // }
-        //     s += sample_criterion;
-        //     // if(s > dist){
-        //     //     s = dist;
-        //     // }
-        // }
-
-
-
-        // // ================================================
-
-        //  dist = vect_norm((*final_cloud)[bounds[c][1]], new_top);
-        //  s_ = 0;
-        // // s = 0;
-        //  s = sample_criterion;
-        //  p_left = tangent_projection(best_planes_normal[c], best_planes_origin[c], new_top);
-        //  p_bottom = tangent_projection(best_planes_normal[c], best_planes_origin[c], (*final_cloud)[bounds[c][0]]);
-        // //  p_right = tangent_projection(best_planes_normal[c], best_planes_origin[c], (*final_cloud)[bounds[c][3]]);
-        // p_right = tangent_projection(best_planes_normal[c], best_planes_origin[c], (*final_cloud)[bounds[c][1]]);
-        //  p_top = tangent_projection(best_planes_normal[c], best_planes_origin[c], (*final_cloud)[bounds[c][2]]);
-
-        // // Point p = get_vector((*final_cloud)[bounds[c][0]], (*final_cloud)[bounds[c][2]]);
-        //  p = get_vector(p_left, p_right);
-
-        // if(vect_norm(p_left, p_right) < sample_criterion && vect_norm(p_bottom, p_top) < sample_criterion){
-        //     // continue;
-        //     s = dist;
-        // }
-
-        // // Point p_ = get_vector((*final_cloud)[bounds[c][1]], (*final_cloud)[bounds[c][3]]);
-        //  s_a = vect_norm(p_right, p_top);
-        //  s_b = vect_norm(p_left, p_top);
-        //  s_c = vect_norm(p_right, p_left);
-        //  v_c = sin( acos( ( s_c * s_c + s_a * s_a - s_b * s_b ) / ( 2 * s_a * s_c ) ) ) * s_a;
-        //  x = sqrt( s_b * s_b - v_c * v_c );
-        // s_a = vect_norm(p_right, p_bottom);
-        // s_b = vect_norm(p_left, p_bottom);
-        // v_c = sin( acos( ( s_c * s_c + s_a * s_a - s_b * s_b ) / ( 2 * s_a * s_c ) ) ) * s_a;
-        //  y = sqrt( s_b * s_b - v_c * v_c );
-        //  diff = y - x;
-        
-        // //  square_origin;
-        // // square_origin.x = p_left.x + p.x * (diff / dist);
-        // // square_origin.y = p_left.y + p.y * (diff / dist);
-        // // square_origin.z = p_left.z + p.z * (diff / dist);
-        // // square_origin.x = p_left.x + p.x * (y / dist);
-        // // square_origin.y = p_left.y + p.y * (y / dist);
-        // // square_origin.z = p_left.z + p.z * (y / dist);
-        // new_top = p_top;
-        //  small_vec = get_vector(p_bottom, square_origin);
-        // //  new_top;
-        // // new_top.x = p_top.x + p.x * (diff / dist);
-        // // new_top.y = p_top.y + p.y * (diff / dist);
-        // // new_top.z = p_top.z + p.z * (diff / dist);
-        // // Point p_ = get_vector(p_bottom, p_top);
-        //  p_ = get_vector(p_bottom, new_top);
-        // std::cout << "s " << s << ", dist " << dist << std::endl;
-        // while(s < dist){
-        //     int sample_max = 50;
-            
-        //     for(int i = 0; i < sample_max; i++){
-        //         double m = static_cast <double> (sample_max) ;
-        //         double coef =  i / m;
-        //         Point new_p;
-        //         new_p.x = p_left.x + ( p.x * ( s / dist ) );
-        //         new_p.y = p_left.y + ( p.y * ( s / dist ) );
-        //         new_p.z = p_left.z + ( p.z * ( s / dist ) );
-
-        //         new_p.x = new_p.x + ( p_.x * ( ( coef ) ) ) - small_vec.x;
-        //         new_p.y = new_p.y + ( p_.y * ( ( coef ) ) ) - small_vec.y;
-        //         new_p.z = new_p.z + ( p_.z * ( ( coef ) ) ) - small_vec.z;
-
-        //         visualization_msgs::Marker marker3;
-        //         marker3.header.frame_id = "base_frame";
-        //         marker3.header.stamp = ros::Time::now();
-        //         marker3.action = visualization_msgs::Marker::ADD;
-        //         marker3.id = c+1000 + 100*s + i;
-        //         marker3.type = visualization_msgs::Marker::POINTS;
-        //         marker3.scale.x = 0.005;
-        //         marker3.scale.y = 0.005;
-        //         marker3.scale.z = 0.005;
-        //         marker3.color.r = 1.0f;
-        //         marker3.color.g = 1.0f;
-        //         marker3.color.a = 1.0;
-
-        //         geometry_msgs::Point p2;
-        //         // p2.x = new_p.x;
-        //         // p2.y = new_p.y;
-        //         // p2.z = new_p.z;
-        //         p2.x = p_top.x;
-        //         p2.y = p_top.y;
-        //         p2.z = p_top.z;
-        //         marker3.points.push_back(p2);
-        //         // markerArray3.markers.push_back(marker3);
-        //         new_p.r = 255;
-        //         new_p.g = 255;
-        //         new_p.a = 255;
-        //         (*final_cloud).push_back(new_p);
-        //         // (*boundary_cloud).push_back(new_p);
-        //     }
-        //     // if(s == dist){
-        //     //     break;
-        //     // }
-        //     s += sample_criterion;
-        //     // if(s > dist){
-        //     //     s = dist;
-        //     // }
-        // }
 
         std::cout << "after while" << std::endl;
     }
 
-    for(int c = 0; c < best_planes.size(); c++){
+    std::cout << "sampling" << std::endl;
+    for(int c = 0; c < boundary_samples.size(); c++){
+        int boundary_idx = boundary_samples_indices[c];
 
-        visualization_msgs::Marker marker;
-        marker.header.frame_id = "base_frame";
-        marker.header.stamp = ros::Time::now();
-        marker.action = visualization_msgs::Marker::ADD;
-        marker.id = c;
-        marker.type = visualization_msgs::Marker::ARROW;
-        marker.scale.x = 0.003;
-        marker.scale.y = 0.005;
-        marker.color.g = 1.0f;
-        marker.color.a = 1.0;
-        geometry_msgs::Point p0;
-        p0.x = best_planes_origin[c].x;
-        p0.y = best_planes_origin[c].y;
-        p0.z = best_planes_origin[c].z;
-        // p0.x = 0;
-        // p0.y = 0;
-        // p0.z = 0;
-        geometry_msgs::Point p1;
-        p1.x = (best_planes_origin[c].x + best_planes_normal[c].normal_x);
-        p1.y = (best_planes_origin[c].y + best_planes_normal[c].normal_y);
-        p1.z = (best_planes_origin[c].z + best_planes_normal[c].normal_z);
-        // p1.x = (best_planes_normal[c].normal_x);
-        // p1.y = (best_planes_normal[c].normal_y);
-        // p1.z = (best_planes_normal[c].normal_z);
-        marker.points.push_back(p0);
-        marker.points.push_back(p1);
-        markerArray.markers.push_back(marker);
+        // visualization_msgs::Marker marker;
+        // marker.header.frame_id = "base_frame";
+        // marker.header.stamp = ros::Time::now();
+        // marker.action = visualization_msgs::Marker::ADD;
+        // marker.id = c;
+        // marker.type = visualization_msgs::Marker::ARROW;
+        // marker.scale.x = 0.003;
+        // marker.scale.y = 0.005;
+        // marker.color.g = 1.0f;
+        // marker.color.a = 1.0;
+        // geometry_msgs::Point p0;
+        // p0.x = boundary_samples_origins[c].x;
+        // p0.y = boundary_samples_origins[c].y;
+        // p0.z = boundary_samples_origins[c].z;
+        // // p0.x = 0;
+        // // p0.y = 0;
+        // // p0.z = 0;
+        // geometry_msgs::Point p1;
+        // p1.x = (boundary_samples_origins[c].x + best_planes_normal[boundary_idx].normal_x);
+        // p1.y = (boundary_samples_origins[c].y + best_planes_normal[boundary_idx].normal_y);
+        // p1.z = (boundary_samples_origins[c].z + best_planes_normal[boundary_idx].normal_z);
+        // // p1.x = (best_planes_normal[c].normal_x);
+        // // p1.y = (best_planes_normal[c].normal_y);
+        // // p1.z = (best_planes_normal[c].normal_z);
+        // marker.points.push_back(p0);
+        // marker.points.push_back(p1);
+        // markerArray.markers.push_back(marker);
 
-        visualization_msgs::Marker marker2;
-        marker2.header.frame_id = "base_frame";
-        marker2.header.stamp = ros::Time::now();
-        marker2.action = visualization_msgs::Marker::ADD;
-        marker2.id = c+100;
-        marker2.type = visualization_msgs::Marker::POINTS;
-        marker2.scale.x = 0.005;
-        marker2.scale.y = 0.005;
-        marker2.scale.z = 0.005;
-        marker2.color.r = 1.0f;
-        marker2.color.b = 1.0f;
-        marker2.color.a = 1.0;
-        geometry_msgs::Point p2;
-        p2.x = best_planes_origin[c].x;
-        p2.y = best_planes_origin[c].y;
-        p2.z = best_planes_origin[c].z;
-        marker2.points.push_back(p2);
-        markerArray2.markers.push_back(marker2);
+        // visualization_msgs::Marker marker2;
+        // marker2.header.frame_id = "base_frame";
+        // marker2.header.stamp = ros::Time::now();
+        // marker2.action = visualization_msgs::Marker::ADD;
+        // marker2.id = c+100;
+        // marker2.type = visualization_msgs::Marker::POINTS;
+        // marker2.scale.x = 0.005;
+        // marker2.scale.y = 0.005;
+        // marker2.scale.z = 0.005;
+        // marker2.color.r = 1.0f;
+        // marker2.color.b = 1.0f;
+        // marker2.color.a = 1.0;
+        // geometry_msgs::Point p2;
+        // p2.x = boundary_samples_origins[c].x;
+        // p2.y = boundary_samples_origins[c].y;
+        // p2.z = boundary_samples_origins[c].z;
+        // marker2.points.push_back(p2);
+        // markerArray2.markers.push_back(marker2);
 
         // continue;
 
         for(int j = 0; j < 10; j++){
-            // std::cout << "c: " << c << std::endl;
-            // double x = (rand() % 100) / 1000.0;
-            // double y = (rand() % 100) / 1000.0;
-            // double z = (rand() % 100) / 1000.0;
-            double min = -0.5;
-            double max = 0.5;
+            double min = -(sample_criterion / 2.0);
+            double max = sample_criterion / 2.0;
             // double x = min + static_cast <double> (rand()) /( static_cast <double> (RAND_MAX/(max - min)));
             double x = min + static_cast <double> (rand()) /( static_cast <double> (RAND_MAX/(max - min)));
             double y = min + static_cast <double> (rand()) /( static_cast <double> (RAND_MAX/(max - min)));
             double z = min + static_cast <double> (rand()) /( static_cast <double> (RAND_MAX/(max - min)));
             Point p_rand;
-            p_rand.x = best_planes_origin[c].x + x;
-            p_rand.y = best_planes_origin[c].y + y;
-            p_rand.z = best_planes_origin[c].z + z;
-
-            // p_rand = tangent_projection(best_planes_normal[c], best_planes_origin[c], p_rand);
-
-            // if(p_rand.x < (*final_cloud)[bounds[c][0]].x || p_rand.y < (*final_cloud)[bounds[c][1]].y ||
-            //         p_rand.x > (*final_cloud)[bounds[c][2]].x || p_rand.y > (*final_cloud)[bounds[c][3]].y){
-            //             j--;
-            //             continue;
-            // }
-
-
-            // p_rand.z = 0;
-            // Point p_proj = tangent_projection(best_planes_normal[c], best_planes_origin[c], p_rand);
-            // double dist = vect_norm();
-            // std::cout << "p ( " << p_rand.x << ", " << p_rand.y << ", " << p_rand.z << " )" << std::endl;
+            p_rand.x = boundary_samples_origins[c].x + x;
+            p_rand.y = boundary_samples_origins[c].y + y;
+            p_rand.z = boundary_samples_origins[c].z + z;
 
             // remove wrong side of tangent plane
             bool cont = false;
-            for(int idx = 0; idx < boundaries[c].size(); idx++){
+            for(int idx = 0; idx < boundary_samples[c].size(); idx++){
                 Point zero;
                 zero.x = 0.0;
                 zero.y = 0.0;
                 zero.z = 0.0;
                 Point normal;
-                normal.x = best_planes_normal[c].normal_x;
-                normal.y = best_planes_normal[c].normal_y;
-                normal.z = best_planes_normal[c].normal_z;
-                Point vec = get_vector(best_planes_origin[c], p_rand);
-                double angle = acos( (vec.x*normal.x + vec.y*normal.y + vec.z*normal.z) / (vect_norm(normal, zero) * vect_norm(best_planes_origin[c], vec)) );
+                normal.x = best_planes_normal[boundary_idx].normal_x;
+                normal.y = best_planes_normal[boundary_idx].normal_y;
+                normal.z = best_planes_normal[boundary_idx].normal_z;
+                Point vec = get_vector(boundary_samples_origins[c], p_rand);
+                double angle = acos( (vec.x*normal.x + vec.y*normal.y + vec.z*normal.z) / (vect_norm(normal, zero) * vect_norm(boundary_samples_origins[c], vec)) );
                 // std::cout << "angle: " << angle << std::endl;
                 if(fabs(angle) > M_PI / 2){
                     cont = true;
@@ -1048,14 +1097,45 @@ sor.setLeafSize (0.1f, 0.1f, 0.1f);
             // distances
             bool ok_d = true;
             // bool ok_d = false;
-            for(int idx = 0; idx < boundaries[c].size(); idx++){
-                int point_idx = boundaries[c][idx];
-                Point point = (*final_cloud)[point_idx];
-                Point projection = tangent_projection(best_planes_normal[c], best_planes_origin[c], p_rand);
+            for(int idx = 0; idx < boundary_samples[c].size(); idx++){
+                Point point = boundary_samples[c][idx];
+                Point projection = tangent_projection(best_planes_normal[boundary_idx], boundary_samples_origins[c], p_rand);
                 double max_dist = vect_norm(point, p_rand);
                 double min_dist = vect_norm(projection, p_rand);
+
+                // visualization_msgs::Marker marker5;
+                // marker5.header.frame_id = "base_frame";
+                // marker5.header.stamp = ros::Time::now();
+                // marker5.action = visualization_msgs::Marker::ADD;
+                // marker5.id = c + idx;
+                // marker5.type = visualization_msgs::Marker::ARROW;
+                // marker5.scale.x = 0.003;
+                // marker5.scale.y = 0.005;
+                // marker5.color.g = 1.0f;
+                // marker5.color.a = 1.0;
+                // geometry_msgs::Point p0;
+                // p0.x = p_rand.x;
+                // p0.y = p_rand.y;
+                // p0.z = p_rand.z;
+                // // p0.x = 0;
+                // // p0.y = 0;
+                // // p0.z = 0;
+                // geometry_msgs::Point p1;
+                // p1.x = point.x;
+                // p1.y = point.y;
+                // p1.z = point.z;
+                // // p1.x = (best_planes_normal[c].normal_x);
+                // // p1.y = (best_planes_normal[c].normal_y);
+                // // p1.z = (best_planes_normal[c].normal_z);
+                // marker5.points.push_back(p0);
+                // marker5.points.push_back(p1);
+                // markerArray.markers.push_back(marker5);
+
+                // std::cout << "point: " << point.x << ", " << point.y << ", " << point.z << std::endl;
+
                 if(min_dist < uav_min_distance || max_dist > uav_max_distance){
                     ok_d = false;
+                    // std::cout << "min: " << min_dist << ", max: " << max_dist << std::endl;
                     // j--;
                     break;
                 }
@@ -1064,25 +1144,19 @@ sor.setLeafSize (0.1f, 0.1f, 0.1f);
                 marker3.color.r = 1.0f;
                 marker3.color.g = 0.0f;
                 marker3.color.b = 0.0f;
-                // geometry_msgs::Point p3;
-                // p3.x = p_rand.x;
-                // p3.y = p_rand.y;
-                // p3.z = p_rand.z;
-                // marker3.points.push_back(p3);
-                // markerArray3.markers.push_back(marker3);
             }
 
             // angles
             bool ok_a = true;
             // bool ok_a = false;
-            for(int idx = 0; idx < boundaries[c].size(); idx++){
-                int point_idx = boundaries[c][idx];
-                Point boundary_point = (*final_cloud)[point_idx];
-                Point projection = tangent_projection(best_planes_normal[c], best_planes_origin[c], p_rand);
+            for(int idx = 0; idx < boundary_samples[c].size(); idx++){
+                Point boundary_point = boundary_samples[c][idx];
+                Point projection = tangent_projection(best_planes_normal[boundary_idx], boundary_samples_origins[c], p_rand);
                 Point v_1 = get_vector(p_rand, projection);
                 Point v_2 = get_vector(p_rand, boundary_point);
                 double angle = (M_PI / 2) - acos( (v_1.x*v_2.x + v_1.y*v_2.y + v_1.z*v_2.z) / (vect_norm(boundary_point, p_rand) * vect_norm(projection, p_rand)) );
                 if(angle < uav_min_angle){
+                    // std::cout << "angle: " << angle << std::endl;
                     ok_a = false;
                     // j--;
                     break;
@@ -1094,7 +1168,7 @@ sor.setLeafSize (0.1f, 0.1f, 0.1f);
                 marker3.scale.z = 0.03;
                 marker3.color.r = 1.0f;
                 marker3.color.g = 1.0f;
-                // marker3.color.b = 1.0f;
+                marker3.color.b = 1.0f;
                 geometry_msgs::Point p3;
                 p3.x = p_rand.x;
                 p3.y = p_rand.y;
@@ -1106,24 +1180,28 @@ sor.setLeafSize (0.1f, 0.1f, 0.1f);
                 suitable_areas_points_indices.push_back(c);
             }
             else{
-                // j--;
+                j--;
                 continue;
             }
-            
-            // geometry_msgs::Point p3;
-            // p3.x = p_rand.x;
-            // p3.y = p_rand.y;
-            // p3.z = p_rand.z;
-            // marker3.points.push_back(p3);
-            // markerArray3.markers.push_back(marker3);
 
-            // suitable_area_points.push_back(p_rand);
-            // suitable_areas_points_indices.push_back(c+1);
+            // geometry_msgs::Point p3;
+            //     p3.x = p_rand.x;
+            //     p3.y = p_rand.y;
+            //     p3.z = p_rand.z;
+            //     marker3.points.push_back(p3);
+            //     markerArray3.markers.push_back(marker3);
+
+                // suitable_area_points.push_back(p_rand);
+                // suitable_areas_points_indices.push_back(c);
         }
+        // break;
         std::cout << "after all" << std::endl;
     }
 
-    // std::cout << "1" << std::endl;
+
+
+
+    std::cout << "GTSP matrix" << std::endl;
     // create GTSP matrix
     std::stringstream gtsp_matrix;
     for(int i = 0; i < suitable_area_points.size(); i++){
@@ -1142,7 +1220,8 @@ sor.setLeafSize (0.1f, 0.1f, 0.1f);
     }
     // std::cout << "2" << std::endl;
     std::vector<std::string> indices_in_clusters;
-    for(int i = 0; i < best_planes.size(); i++){
+    // for(int i = 0; i < best_planes.size(); i++){
+    for(int i = 0; i < boundary_samples_origins.size(); i++){
         // if(i == 0 || i == 1){
         //     std::stringstream str_str;
         //     int val = i + 1;
@@ -1194,7 +1273,8 @@ sor.setLeafSize (0.1f, 0.1f, 0.1f);
         out << "NAME: " << instance_name.str();//"NAME: tmp_instance\n";
         out << "TYPE: GTSP\n";
         out << "DIMENSION: " << std::to_string(suitable_area_points.size()) << "\n";
-        out << "GTSP_SETS: " << std::to_string(best_planes.size()) << "\n";
+        // out << "GTSP_SETS: " << std::to_string(best_planes.size()) << "\n";
+        out << "GTSP_SETS: " << std::to_string(boundary_samples.size()) << "\n";
         out << "EDGE_WEIGHT_TYPE: EXPLICIT\n";
         out << "EDGE_WEIGHT_FORMAT: FULL_MATRIX\n";
         out << "EDGE_WEIGHT_SECTION\n";
@@ -1240,13 +1320,17 @@ sor.setLeafSize (0.1f, 0.1f, 0.1f);
         in.close();
     }
 
-    // for(int i = 0; i < solution.size(); i++){
-    //     int sol_idx = solution[i];
-    //     std::cout << "sol: " << sol_idx << std::endl;
-    //     markerArray3.markers[sol_idx].color.r = ((suitable_areas_points_indices[sol_idx] + 1.0) / solution.size() ) * 1.0f;
-    //     markerArray3.markers[sol_idx].color.g = 0.0f;
-    //     markerArray3.markers[sol_idx].color.b = ((suitable_areas_points_indices[sol_idx] + 1.0) / solution.size() ) * 1.0f;
-    // }
+    for(int i = 0; i < solution.size(); i++){
+        int sol_idx = solution[i];
+        std::cout << "sol: " << sol_idx << std::endl;
+        markerArray3.markers[sol_idx].color.r = ((suitable_areas_points_indices[sol_idx] + 1.0) / solution.size() ) * 1.0f;
+        markerArray3.markers[sol_idx].color.g = 0.0f;
+        markerArray3.markers[sol_idx].color.b = ((suitable_areas_points_indices[sol_idx] + 1.0) / solution.size() ) * 1.0f;
+    }
+
+
+
+
 
     // for (auto& point: *final_cloud){        
     //     point.r = 0;
@@ -1315,14 +1399,18 @@ sor.setLeafSize (0.1f, 0.1f, 0.1f);
         // cloud_normals->header.frame_id = "base_frame";
 
 		//colored_cloud->header.frame_id = "base_frame";
-        // boundary_cloud->header.frame_id = "base_frame";
+        boundary_cloud->header.frame_id = "base_frame";
+
+        boundary_projections->header.frame_id = "base_frame";
 
 		// pub.publish (*cloud);
         // pub.publish (*new_cloud);
 
         pub.publish (*final_cloud);
 
-        // pub.publish (*boundary_cloud);
+        pub2.publish (*boundary_cloud);
+
+        pub3.publish (*boundary_projections);
 //         pc_pub.publish(*cloud_normals);
         
         // marker_pub.publish(markerArray);
