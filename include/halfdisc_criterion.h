@@ -16,7 +16,7 @@ std::vector<double> get_probabilities(PointCloud cloud, std::vector<Point> mi_pr
     for(unsigned long int i = 0; i < (*cloud).size(); i++){
         double norm = vect_norm((*cloud)[i], mi_prime[i]);
         double not_prob = norm / ((4*distances[i]) / (3*M_PI));
-        // if(not_prob > 0.4){
+        // if(not_prob > 0.3){
         //     std::cout << not_prob << std::endl;
         // }
         double prob = fmin(not_prob, 1);

@@ -322,6 +322,12 @@ std::vector<Point> compute_mi(PointCloud cloud, std::map<unsigned long int, std:
 
     auto start = std::chrono::high_resolution_clock::now();
     for(unsigned long int i = 0; i < (*cloud).size(); i++){
+        double lllk = 0;
+        Point nmtr;
+        nmtr.x = 0;
+        nmtr.y = 0;
+        nmtr.z = 0;
+
         Point mi_p;
         Point numerator;
         numerator.x = 0;
@@ -343,12 +349,15 @@ std::vector<Point> compute_mi(PointCloud cloud, std::map<unsigned long int, std:
             // numerator.x += (*cloud)[neighbours[i][j].first].x * g;
             // numerator.y += (*cloud)[neighbours[i][j].first].y * g;
             // numerator.z += (*cloud)[neighbours[i][j].first].z * g;
-            // numerator.x += (q.x * g);
-            // numerator.y += (q.y * g);
-            // numerator.z += (q.z * g);
-            numerator.x += q.x;
-            numerator.y += q.y;
-            numerator.z += q.z;
+            numerator.x += (q.x * g);
+            numerator.y += (q.y * g);
+            numerator.z += (q.z * g);
+            // numerator.x += q.x;
+            // numerator.y += q.y;
+            // numerator.z += q.z;
+            // nmtr.x += q.x;
+            // nmtr.y += q.y;
+            // nmtr.z += q.z;
             // Point p = tangent_projection(normal_vectors->points[i], (*cloud)[i], (*cloud)[neighbours[i][j].first]);
             // double norm = vect_norm(p, (*cloud)[i]);
             // double sigma = average_distances[i] / 3;
@@ -356,14 +365,21 @@ std::vector<Point> compute_mi(PointCloud cloud, std::map<unsigned long int, std:
             // numerator.x += p.x * g;
             // numerator.y += p.y * g;
             // numerator.z += p.z * g;
-            // denominator += g;
-            denominator += 1;
+            denominator += g;
+            // lllk += 1;
+            // denominator += 1;
         }
         mi_p.x = numerator.x / denominator;
         mi_p.y = numerator.y / denominator;
         mi_p.z = numerator.z / denominator;
+
+        // nmtr.x = nmtr.x / lllk;
+        // nmtr.y = nmtr.y / lllk;
+        // nmtr.z = nmtr.z / lllk;
         // std::cout << "mi " << i << " (" << mi_p.x << ", " << mi_p.y << ", " << mi_p.z << ")" << std::endl;
+        // std::cout << "origin " << i << " (" << nmtr.x << ", " << nmtr.y << ", " << nmtr.z << ")" << std::endl;
         // std::cout << "point " << i << " (" << p.x << ", " << p.y << ", " << p.z << ")" << std::endl;
+        // std::cout << "point-mi: " << vect_norm(p, mi_p) << ", point-origin: " << vect_norm(p, nmtr) << ", origin-mi: " << vect_norm(nmtr, mi_p) << std::endl;
         // std::cout << "------------------------" << std::endl;
         mis.push_back(mi_p);
     }
