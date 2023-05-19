@@ -277,7 +277,7 @@ double compute_prob(Point A_p){
     // std::cout << "sigma " << sigma_line << std::endl;
     double prob_line = exp( (-d_line*d_line) / (sigma_line*sigma_line) );
     // std::cout << "prob " << prob_line << std::endl;
-    // denominator += prob_line;
+    denominator += prob_line;
 
     double d_ridge = vect_norm(A_p, A_ridge);
     // std::cout << "d " << d_line << std::endl;
@@ -330,8 +330,9 @@ std::vector<double> get_probabilities(PointCloud cloud, std::map<unsigned long i
                 // return vect_norm(p, q);
                 // return 1.0 / vect_norm(p, q);
                 double norm = vect_norm(p, q);
-                // return exp(- ((9.0 * (norm * norm)) / (dist * dist)));
-                return exp(- ( (norm * norm)) / (dist * dist));
+                return exp(- ((9.0 * (norm * norm)) / (dist * dist)));
+                // return exp(- ( (norm * norm)) / (dist * dist));
+                // return exp(- ( (norm * norm)));
                 // return exp(- ((9.0 * (norm * norm)) / (dist * dist * dist * dist)));
             };
         // for(int i = 0; i < neighbours[point_idx].size(); i++){
@@ -399,8 +400,8 @@ std::vector<double> get_probabilities(PointCloud cloud, std::map<unsigned long i
         // markerArray.markers.push_back(marker2);
         double avg_dist = 0.0;
         for(int j = 0; j < neighbours[i].size(); j++){
-            avg_dist += vect_norm((*cloud)[i], (*cloud)[neighbours[i][j]]);
-            // avg_dist += vect_norm(mis[i], (*cloud)[neighbours[i][j]]);
+            // avg_dist += vect_norm((*cloud)[i], (*cloud)[neighbours[i][j]]);
+            avg_dist += vect_norm(mis[i], (*cloud)[neighbours[i][j]]);
         }
         avg_dist /= neighbours[i].size();
 

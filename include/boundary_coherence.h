@@ -11,7 +11,7 @@
 // std::vector<char> get_boundary_points(PointCloud cloud, int K, double epsilon, int K_2, double epsilon_2, double k_angle,
 //                                         double k_halfdisc, double k_shape, double trashold){
 std::vector<std::vector<int>> get_boundary_points(PointCloud cloud, int K, double epsilon, int K_2, double epsilon_2, double k_angle,
-                                        double k_halfdisc, double k_shape, double trashold, double weight_boundary){
+                                        double k_halfdisc, double k_shape, double trashold, double weight_boundary, int minimum_loop_length){
 
     pcl::PointCloud<pcl::Normal>::Ptr normals = get_normal_vectors(cloud, K, epsilon);
     std::map<unsigned long int, std::vector<int>> neighbours = get_neighbours(cloud, K, epsilon);
@@ -875,7 +875,7 @@ std::vector<std::vector<int>> get_boundary_points(PointCloud cloud, int K, doubl
             //     components_edges[idx_from].push_back(edge);
             // }
 
-            if(length > e && length > components_max_cycle_len[idx_from]){
+            if(length > e && length > minimum_loop_length && length > components_max_cycle_len[idx_from]){
 
                 components_max_cycle_len[idx_from] = length;
                 components_max_cycle_edge[idx_from].from = edge.from;

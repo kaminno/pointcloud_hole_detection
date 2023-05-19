@@ -42,6 +42,11 @@
 
 #include <mrs_lib/param_loader.h>
 
+#include <mrs_msgs/Reference.h>
+// #include "../../aerial_core_planning/ros_packages/mrs_msgs/srv/GetPath.srv"
+// #include "mrs_msgs/GetPathSrv.srv"
+
+
 // #include "auxiliary_functions.h"
 
 // typedef std::vector<PointXYZRGB, Eigen::aligned_allocator<PointXYZRGB> > VectorType; 
@@ -73,6 +78,7 @@ int main(int argc, char* argv[]){
     double k_shape;
     std::string abs_path;
     double weight_boundary;
+    int minimum_loop_length;
     pl.loadParam(node_name + "/K", K);
     pl.loadParam(node_name + "/epsilon", epsilon);
     pl.loadParam(node_name + "/K_2", K_2);
@@ -84,6 +90,7 @@ int main(int argc, char* argv[]){
     pl.loadParam(node_name + "/k_halfdisc", k_halfdisc);
     pl.loadParam(node_name + "/k_shape", k_shape);
     pl.loadParam(node_name + "/weight_boundary", weight_boundary);
+    pl.loadParam(node_name + "/minimum_loop_length", minimum_loop_length);
 
     int n_ransac;
     int k_ransac;
@@ -98,10 +105,21 @@ int main(int argc, char* argv[]){
     double uav_max_distance;
     double uav_min_angle;
     double uav_min_area_width;
+    int area_samples_first;
+    int area_samples_second;
+    int area_samples_mid;
+    double uav_sample_width;
+    double uav_sample_height;
     pl.loadParam(node_name + "/uav_min_distance", uav_min_distance);
     pl.loadParam(node_name + "/uav_max_distance", uav_max_distance);
     pl.loadParam(node_name + "/uav_min_angle", uav_min_angle);
     pl.loadParam(node_name + "/uav_min_area_width", uav_min_area_width);
+    //pl.loadParam(node_name + "/uav_min_area_width", uav_min_area_width);
+    pl.loadParam(node_name + "/area_samples_first", area_samples_first);
+    pl.loadParam(node_name + "/area_samples_second", area_samples_second);
+    pl.loadParam(node_name + "/area_samples_mid", area_samples_mid);
+    pl.loadParam(node_name + "/uav_sample_width", uav_sample_width);
+    pl.loadParam(node_name + "/uav_sample_height", uav_sample_height);
 
     uav_min_angle *= (2 * M_PI) / 360.0 ;
 
@@ -190,7 +208,7 @@ sor.setLeafSize (0.1f, 0.1f, 0.1f);
     visualization_msgs::MarkerArray markerArray3;
 
 
-    std::vector<std::vector<int>> boundaries = get_boundary_points(cloud, K, epsilon, K_2, epsilon_2, k_angle, k_halfdisc, k_shape, trashold, weight_boundary);
+    std::vector<std::vector<int>> boundaries = get_boundary_points(cloud, K, epsilon, K_2, epsilon_2, k_angle, k_halfdisc, k_shape, trashold, weight_boundary, minimum_loop_length);
     std::cout << "coloration" << std::endl;
     // int ii = 0;
     std::cout << "boundary size: " << boundaries.size() << std::endl;
@@ -227,7 +245,7 @@ sor.setLeafSize (0.1f, 0.1f, 0.1f);
         // ii++;
         std::cout << "----------" << std::endl;
     }
-    /*
+    
     
     std::vector<Point> suitable_area_points;
     std::vector<int> suitable_areas_points_indices;
@@ -323,17 +341,17 @@ sor.setLeafSize (0.1f, 0.1f, 0.1f);
 
             // auto plane_normal = normals->points[new_cloud->size() - 1];
             pcl::Normal plane_normal;
-            plane_normal.normal_x = 0;
-            plane_normal.normal_y = 0;
-            plane_normal.normal_z = 0;
+            plane_normal.normal_x = 0.0;
+            plane_normal.normal_y = 0.0;
+            plane_normal.normal_z = 0.0;
             for(int j = 0; j < n_ransac; j++){
                 plane_normal.normal_x += normals->points[random_indexes[j]].normal_x;
                 plane_normal.normal_y += normals->points[random_indexes[j]].normal_y;
                 plane_normal.normal_z += normals->points[random_indexes[j]].normal_z;
             }
-            plane_normal.normal_x /= 3;
-            plane_normal.normal_y /= 3;
-            plane_normal.normal_z /= 3;
+            plane_normal.normal_x /= 3.0;
+            plane_normal.normal_y /= 3.0;
+            plane_normal.normal_z /= 3.0;
 
             std::vector<int> points_below_trashold;
             int sum_of_distances = 0;
@@ -681,8 +699,9 @@ sor.setLeafSize (0.1f, 0.1f, 0.1f);
         // double y = sqrt( s_b * s_b - v_c * v_c );
         // double diff_y_x = y - x;
 
-        (*final_cloud).push_back(p_right);
-        (*final_cloud).push_back(p_top);
+        // MAYBE PROJECTED NEW BOUNDARY POINTS
+        // (*final_cloud).push_back(p_right);
+        // (*final_cloud).push_back(p_top);
 
         // Point rectangle_origin;
         // rectangle_origin.x = p_left.x + vector_left_to_right.x * (y / dist_left_to_right);
@@ -714,9 +733,13 @@ sor.setLeafSize (0.1f, 0.1f, 0.1f);
     std::vector<std::vector<Point>> boundary_samples;
     std::vector<Point> boundary_samples_origins;
     std::vector<int> boundary_samples_indices;
+    std::vector<std::vector<Point>> boundary_samples_bounds;
 
-    double sample_criterion = 2 * ( sqrt( uav_max_distance*uav_max_distance - uav_min_distance*uav_min_distance ) - (uav_min_area_width / 2) );
-    std::cout << "sample criterion: " << sample_criterion << std::endl;
+    // double sample_criterion = 2 * ( sqrt( uav_max_distance*uav_max_distance - uav_min_distance*uav_min_distance ) - (uav_min_area_width / 2) );
+    double sample_step_w = uav_sample_width;    //2 * ( sqrt( uav_max_distance*uav_max_distance - uav_min_distance*uav_min_distance ) - (uav_min_area_width / 2) );
+    double sample_step_h = uav_sample_height;    //2 * ( sqrt( uav_max_distance*uav_max_distance - uav_min_distance*uav_min_distance ) - (uav_min_area_width / 2) );
+    std::cout << "sample criterion w: " << sample_step_w << std::endl;
+    std::cout << "sample criterion h: " << sample_step_h << std::endl;
     std::cout << "vizualisation" << std::endl;
     for(int c = 0; c < best_planes.size(); c++){
     // for(int c = 3; c < 4; c++){
@@ -816,10 +839,10 @@ sor.setLeafSize (0.1f, 0.1f, 0.1f);
         // rectangle_origin.y = (p_left.y + p_right.y) / 2.0;
         // rectangle_origin.z = (p_left.z + p_right.z) / 2.0;
 
-        rectangle_origin.r = 255;
-        rectangle_origin.g = 150;
-        rectangle_origin.a = 255;
-        (*final_cloud).push_back(rectangle_origin);
+        // rectangle_origin.r = 255;
+        // rectangle_origin.g = 150;
+        // rectangle_origin.a = 255;
+        // (*final_cloud).push_back(rectangle_origin);
         
         Point vec_left_origin = get_vector(p_left, rectangle_origin);
         // Point vec_bottom_origin = get_vector(p_bottom, rectangle_origin);
@@ -830,9 +853,11 @@ sor.setLeafSize (0.1f, 0.1f, 0.1f);
 
         // Point vector_bottom_to_top = get_vector(p_bottom, new_top);
 
-        for(double sample_height_start = 0.0; sample_height_start < dist_bottom_to_top; sample_height_start += sample_criterion){
+        // for(double sample_height_start = 0.0; sample_height_start < dist_bottom_to_top; sample_height_start += sample_criterion){
+        for(double sample_height_start = 0.0; sample_height_start < dist_bottom_to_top; sample_height_start += sample_step_h){
             // std::cout << "sample_height_start: " << sample_height_start << " / dist_bottom_to_top: " << dist_bottom_to_top << std::endl;
-            for(double sample_width_start = 0.0; sample_width_start < dist_left_to_right; sample_width_start += sample_criterion){
+            // for(double sample_width_start = 0.0; sample_width_start < dist_left_to_right; sample_width_start += sample_criterion){
+            for(double sample_width_start = 0.0; sample_width_start < dist_left_to_right; sample_width_start += sample_step_w){
                 // std::cout << "sample_width_start: " << sample_width_start << " / dist_left_to_right: " << dist_left_to_right << std::endl;
 
                 int sample_max = 5;
@@ -849,7 +874,8 @@ sor.setLeafSize (0.1f, 0.1f, 0.1f);
                 h_bottom.z = p_bottom.z + vector_bottom_to_top.z * ( sample_height_start / dist_bottom_to_top);
 
                 Point h_top;
-                double sample_size_h = (sample_height_start + sample_criterion);// > dist_bottom_to_top ? (dist_bottom_to_top - sample_height_start) : (sample_height_start + sample_criterion);
+                // double sample_size_h = (sample_height_start + sample_criterion);// > dist_bottom_to_top ? (dist_bottom_to_top - sample_height_start) : (sample_height_start + sample_criterion);
+                double sample_size_h = (sample_height_start + sample_step_h);
                 h_top.x = p_bottom.x + vector_bottom_to_top.x * ( sample_size_h / dist_bottom_to_top);
                 h_top.y = p_bottom.y + vector_bottom_to_top.y * ( sample_size_h / dist_bottom_to_top);
                 h_top.z = p_bottom.z + vector_bottom_to_top.z * ( sample_size_h / dist_bottom_to_top);
@@ -863,7 +889,8 @@ sor.setLeafSize (0.1f, 0.1f, 0.1f);
                 w_left.z = p_left.z + vector_left_to_right.z * ( sample_width_start / dist_left_to_right);
 
                 Point w_right;
-                double sample_size_w = (sample_width_start + sample_criterion);// > dist_left_to_right ? (dist_left_to_right - sample_width_start) : (sample_width_start + sample_criterion);
+                // double sample_size_w = (sample_width_start + sample_criterion);// > dist_left_to_right ? (dist_left_to_right - sample_width_start) : (sample_width_start + sample_criterion);
+                double sample_size_w = (sample_width_start + sample_step_w);
                 w_right.x = p_left.x + vector_left_to_right.x * ( sample_size_w / dist_left_to_right);
                 w_right.y = p_left.y + vector_left_to_right.y * ( sample_size_w / dist_left_to_right);
                 w_right.z = p_left.z + vector_left_to_right.z * ( sample_size_w / dist_left_to_right);
@@ -888,6 +915,11 @@ sor.setLeafSize (0.1f, 0.1f, 0.1f);
                 // Point w_e = get_vector(w_left, w_right_e);
 
                 std::vector<Point> samples;
+                std::vector<Point> samples_bounds;
+                samples_bounds.push_back(w_left);
+                samples_bounds.push_back(h_bottom);
+                samples_bounds.push_back(w_right);
+                samples_bounds.push_back(h_top);
 
                 for(int i = 0; i < sample_max; i++){
                     double m = static_cast <double> (sample_max) ;
@@ -928,9 +960,12 @@ sor.setLeafSize (0.1f, 0.1f, 0.1f);
                     // (*boundary_cloud).push_back(left_sample);
 
                     // left_sample.x = left_sample.x + ( vector_bottom_to_top.x * ( ( coef ) ) ) - vec_bottom_origin.x;
-                    left_sample.x = left_sample.x + ( ( sample_height_start / sample_criterion) * h.x + h.x * ( ( coef ) ) ) - vec_bottom_origin.x;
-                    left_sample.y = left_sample.y + ( ( sample_height_start / sample_criterion) * h.y + h.y * ( ( coef ) ) ) - vec_bottom_origin.y;
-                    left_sample.z = left_sample.z + ( ( sample_height_start / sample_criterion) * h.z + h.z * ( ( coef ) ) ) - vec_bottom_origin.z;
+                    // left_sample.x = left_sample.x + ( ( sample_height_start / sample_criterion) * h.x + h.x * ( ( coef ) ) ) - vec_bottom_origin.x;
+                    // left_sample.y = left_sample.y + ( ( sample_height_start / sample_criterion) * h.y + h.y * ( ( coef ) ) ) - vec_bottom_origin.y;
+                    // left_sample.z = left_sample.z + ( ( sample_height_start / sample_criterion) * h.z + h.z * ( ( coef ) ) ) - vec_bottom_origin.z;
+                    left_sample.x = left_sample.x + ( ( sample_height_start / sample_step_h) * h.x + h.x * ( ( coef ) ) ) - vec_bottom_origin.x;
+                    left_sample.y = left_sample.y + ( ( sample_height_start / sample_step_h) * h.y + h.y * ( ( coef ) ) ) - vec_bottom_origin.y;
+                    left_sample.z = left_sample.z + ( ( sample_height_start / sample_step_h) * h.z + h.z * ( ( coef ) ) ) - vec_bottom_origin.z;
                     // left_sample.x = left_sample.x + ( ( sample_height_start / sample_criterion) * h.x + h_e.x * ( ( coef ) ) ) - vec_bottom_origin.x;
                     // left_sample.y = left_sample.y + ( ( sample_height_start / sample_criterion) * h.y + h_e.y * ( ( coef ) ) ) - vec_bottom_origin.y;
                     // left_sample.z = left_sample.z + ( ( sample_height_start / sample_criterion) * h.z + h_e.z * ( ( coef ) ) ) - vec_bottom_origin.z;
@@ -950,15 +985,19 @@ sor.setLeafSize (0.1f, 0.1f, 0.1f);
                     Point right_sample;
                     // right_sample.x = p_left.x + ( vector_left_to_right.x * ( ( sample_height_start + sample_criterion ) / dist_left_to_right ) );
                     // double width_dist_sample = ( sample_width_start + sample_criterion ) / dist_left_to_right > dist_left_to_right ? 1.0 : ( sample_width_start + sample_criterion ) / dist_left_to_right;
-                    double width_dist_sample = ( sample_width_start + sample_criterion ) > dist_left_to_right ? 1.0 : ( sample_width_start + sample_criterion ) / dist_left_to_right;
+                    // double width_dist_sample = ( sample_width_start + sample_criterion ) > dist_left_to_right ? 1.0 : ( sample_width_start + sample_criterion ) / dist_left_to_right;
+                    double width_dist_sample = ( sample_width_start + sample_step_w ) > dist_left_to_right ? 1.0 : ( sample_width_start + sample_step_w ) / dist_left_to_right;
                     right_sample.x = p_left.x + ( vector_left_to_right.x * ( width_dist_sample ) );
                     right_sample.y = p_left.y + ( vector_left_to_right.y * ( width_dist_sample ) );
                     right_sample.z = p_left.z + ( vector_left_to_right.z * ( width_dist_sample ) );
 
                     // double width_dist_sample = ( sample_height_start / sample_criterion) > dist_left_to_right ? 1.0 : ( sample_width_start + sample_criterion ) / dist_left_to_right;
-                    right_sample.x = right_sample.x + ( ( sample_height_start / sample_criterion) * h.x + h.x * ( ( coef ) ) ) - vec_bottom_origin.x;
-                    right_sample.y = right_sample.y + ( ( sample_height_start / sample_criterion) * h.y + h.y * ( ( coef ) ) ) - vec_bottom_origin.y;
-                    right_sample.z = right_sample.z + ( ( sample_height_start / sample_criterion) * h.z + h.z * ( ( coef ) ) ) - vec_bottom_origin.z;
+                    // right_sample.x = right_sample.x + ( ( sample_height_start / sample_criterion) * h.x + h.x * ( ( coef ) ) ) - vec_bottom_origin.x;
+                    // right_sample.y = right_sample.y + ( ( sample_height_start / sample_criterion) * h.y + h.y * ( ( coef ) ) ) - vec_bottom_origin.y;
+                    // right_sample.z = right_sample.z + ( ( sample_height_start / sample_criterion) * h.z + h.z * ( ( coef ) ) ) - vec_bottom_origin.z;
+                    right_sample.x = right_sample.x + ( ( sample_height_start / sample_step_h) * h.x + h.x * ( ( coef ) ) ) - vec_bottom_origin.x;
+                    right_sample.y = right_sample.y + ( ( sample_height_start / sample_step_h) * h.y + h.y * ( ( coef ) ) ) - vec_bottom_origin.y;
+                    right_sample.z = right_sample.z + ( ( sample_height_start / sample_step_h) * h.z + h.z * ( ( coef ) ) ) - vec_bottom_origin.z;
                     // right_sample.x = right_sample.x + ( ( sample_height_start / sample_criterion) * h.x + h_e.x * ( ( coef ) ) ) - vec_bottom_origin.x;
                     // right_sample.y = right_sample.y + ( ( sample_height_start / sample_criterion) * h.y + h_e.y * ( ( coef ) ) ) - vec_bottom_origin.y;
                     // right_sample.z = right_sample.z + ( ( sample_height_start / sample_criterion) * h.z + h_e.z * ( ( coef ) ) ) - vec_bottom_origin.z;
@@ -980,9 +1019,12 @@ sor.setLeafSize (0.1f, 0.1f, 0.1f);
                     bottom_sample.y = p_bottom.y + ( vector_bottom_to_top.y * ( height_dist ) );
                     bottom_sample.z = p_bottom.z + ( vector_bottom_to_top.z * ( height_dist ) );
 
-                    bottom_sample.x = bottom_sample.x + ( ( sample_width_start / sample_criterion) * w.x + w.x * ( ( coef ) ) ) - vec_left_origin.x;
-                    bottom_sample.y = bottom_sample.y + ( ( sample_width_start / sample_criterion) * w.y + w.y * ( ( coef ) ) ) - vec_left_origin.y;
-                    bottom_sample.z = bottom_sample.z + ( ( sample_width_start / sample_criterion) * w.z + w.z * ( ( coef ) ) ) - vec_left_origin.z;
+                    // bottom_sample.x = bottom_sample.x + ( ( sample_width_start / sample_criterion) * w.x + w.x * ( ( coef ) ) ) - vec_left_origin.x;
+                    // bottom_sample.y = bottom_sample.y + ( ( sample_width_start / sample_criterion) * w.y + w.y * ( ( coef ) ) ) - vec_left_origin.y;
+                    // bottom_sample.z = bottom_sample.z + ( ( sample_width_start / sample_criterion) * w.z + w.z * ( ( coef ) ) ) - vec_left_origin.z;
+                    bottom_sample.x = bottom_sample.x + ( ( sample_width_start / sample_step_w) * w.x + w.x * ( ( coef ) ) ) - vec_left_origin.x;
+                    bottom_sample.y = bottom_sample.y + ( ( sample_width_start / sample_step_w) * w.y + w.y * ( ( coef ) ) ) - vec_left_origin.y;
+                    bottom_sample.z = bottom_sample.z + ( ( sample_width_start / sample_step_w) * w.z + w.z * ( ( coef ) ) ) - vec_left_origin.z;
                     // bottom_sample.x = bottom_sample.x + ( ( sample_width_start / sample_criterion) * w.x + w_e.x * ( ( coef ) ) ) - vec_left_origin.x;
                     // bottom_sample.y = bottom_sample.y + ( ( sample_width_start / sample_criterion) * w.y + w_e.y * ( ( coef ) ) ) - vec_left_origin.y;
                     // bottom_sample.z = bottom_sample.z + ( ( sample_width_start / sample_criterion) * w.z + w_e.z * ( ( coef ) ) ) - vec_left_origin.z;
@@ -998,14 +1040,18 @@ sor.setLeafSize (0.1f, 0.1f, 0.1f);
                     }
                     
                     Point top_sample;
-                    double height_dist_sample = ( sample_height_start + sample_criterion ) > dist_bottom_to_top ? 1.0 : ( sample_height_start + sample_criterion ) / dist_bottom_to_top;
+                    // double height_dist_sample = ( sample_height_start + sample_criterion ) > dist_bottom_to_top ? 1.0 : ( sample_height_start + sample_criterion ) / dist_bottom_to_top;
+                    double height_dist_sample = ( sample_height_start + sample_step_h ) > dist_bottom_to_top ? 1.0 : ( sample_height_start + sample_step_h ) / dist_bottom_to_top;
                     top_sample.x = p_bottom.x + ( vector_bottom_to_top.x * ( height_dist_sample ) );
                     top_sample.y = p_bottom.y + ( vector_bottom_to_top.y * ( height_dist_sample ) );
                     top_sample.z = p_bottom.z + ( vector_bottom_to_top.z * ( height_dist_sample ) );
 
-                    top_sample.x = top_sample.x + ( ( sample_width_start / sample_criterion) * w.x + w.x * ( ( coef ) ) ) - vec_left_origin.x;
-                    top_sample.y = top_sample.y + ( ( sample_width_start / sample_criterion) * w.y + w.y * ( ( coef ) ) ) - vec_left_origin.y;
-                    top_sample.z = top_sample.z + ( ( sample_width_start / sample_criterion) * w.z + w.z * ( ( coef ) ) ) - vec_left_origin.z;
+                    // top_sample.x = top_sample.x + ( ( sample_width_start / sample_criterion) * w.x + w.x * ( ( coef ) ) ) - vec_left_origin.x;
+                    // top_sample.y = top_sample.y + ( ( sample_width_start / sample_criterion) * w.y + w.y * ( ( coef ) ) ) - vec_left_origin.y;
+                    // top_sample.z = top_sample.z + ( ( sample_width_start / sample_criterion) * w.z + w.z * ( ( coef ) ) ) - vec_left_origin.z;
+                    top_sample.x = top_sample.x + ( ( sample_width_start / sample_step_w) * w.x + w.x * ( ( coef ) ) ) - vec_left_origin.x;
+                    top_sample.y = top_sample.y + ( ( sample_width_start / sample_step_w) * w.y + w.y * ( ( coef ) ) ) - vec_left_origin.y;
+                    top_sample.z = top_sample.z + ( ( sample_width_start / sample_step_w) * w.z + w.z * ( ( coef ) ) ) - vec_left_origin.z;
                     // top_sample.x = top_sample.x + ( ( sample_width_start / sample_criterion) * w.x + w_e.x * ( ( coef ) ) ) - vec_left_origin.x;
                     // top_sample.y = top_sample.y + ( ( sample_width_start / sample_criterion) * w.y + w_e.y * ( ( coef ) ) ) - vec_left_origin.y;
                     // top_sample.z = top_sample.z + ( ( sample_width_start / sample_criterion) * w.z + w_e.z * ( ( coef ) ) ) - vec_left_origin.z;
@@ -1069,24 +1115,62 @@ sor.setLeafSize (0.1f, 0.1f, 0.1f);
                     // markerArray3.markers.push_back(marker4);
 
                 }
+                // pcl::Normal nor;
+                // Point l_r = get_vector(w_left, w_right);
+                // Point b_tt = get_vector(h_bottom, h_top);
+                // nor.normal_x = l_r.x;
+                // nor.normal_y = l_r.y;
+                // nor.normal_z = l_r.z;
+                // Point proj = tangent_projection(nor, h_bottom, w_left);
+                // proj.r = 100;
+                // proj.b = 255;
+                // proj.a = 255;
+                // (*final_cloud).push_back(proj);
+                // double dist1 = vect_norm(h_bottom, h_top) / 2.0;
+                // double dist2 = vect_norm(h_bottom, proj);
+                // double dist3 = vect_norm(p_left, p_right) / 2.0;
+                
+                // Point p11;
+                // // p11.x = p_left.x + dist3 * l_r.x;
+                // // p11.y = p_left.y + dist3 * l_r.y;
+                // // p11.z = p_left.z + dist3 * l_r.z;
+                // p11.x = p_left.x + l_r.x/2.0;
+                // p11.y = p_left.y + l_r.y/2.0;
+                // p11.z = p_left.z + l_r.z/2.0;
+                // p11.r = 100;
+                // p11.b = 100;
+                // p11.a = 255;
+                // Point p22;
+                // p22.x = p_left.x + (dist1 - dist2) * b_tt.x;
+                // p22.y = p_left.y + (dist1 - dist2) * b_tt.y;
+                // p22.z = p_left.z + (dist1 - dist2) * b_tt.z;
+                // p22.r = 200;
+                // p22.b = 200;
+                // p22.a = 255;
+                // (*final_cloud).push_back(p11);
+                // (*final_cloud).push_back(p22);
+
                 Point origin;
+                // origin.x = w_left.x + l_r.x / 2.0 + (dist1 - dist2) * b_tt.x;
+                // origin.y = w_left.y + l_r.y / 2.0 + (dist1 - dist2) * b_tt.y;
+                // origin.z = w_left.z + l_r.z / 2.0 + (dist1 - dist2) * b_tt.z;
                 origin.x = 0;
                 origin.y = 0;
                 origin.z = 0;
-                origin.x = ((p_left.x + p_right.x)/2 + (p_bottom.x + p_top.x)/2)/2;
-                origin.y = ((p_left.y + p_right.y)/2 + (p_bottom.y + p_top.y)/2)/2;
-                origin.z = ((p_left.z + p_right.z)/2 + (p_bottom.z + p_top.z)/2)/2;
+                // origin.x = ((p_left.x + p_right.x)/2 + (p_bottom.x + p_top.x)/2)/2;
+                // origin.y = ((p_left.y + p_right.y)/2 + (p_bottom.y + p_top.y)/2)/2;
+                // origin.z = ((p_left.z + p_right.z)/2 + (p_bottom.z + p_top.z)/2)/2;
                 origin.r = 100;
                 origin.g = 255;
                 origin.a = 255;
-                // for(int i = 0; i < samples.size(); i++){
-                //     origin.x += samples[i].x;
-                //     origin.y += samples[i].y;
-                //     origin.z += samples[i].z;
-                // }
-                // origin.x /= samples.size();
-                // origin.y /= samples.size();
-                // origin.z /= samples.size();
+                for(int i = 0; i < samples.size(); i++){
+                    origin.x += samples[i].x;
+                    origin.y += samples[i].y;
+                    origin.z += samples[i].z;
+                }
+                origin.x /= samples.size();
+                origin.y /= samples.size();
+                origin.z /= samples.size();
 
                 // std::cout << "origin x " << origin.x << " / " << ((p_left.x + p_right.x)/2 + (p_bottom.x + p_top.x)/2)/2 << std::endl;
                 // std::cout << "origin y " << origin.y << " / " << ((p_left.y + p_right.y)/2 + (p_bottom.y + p_top.y)/2)/2 << std::endl;
@@ -1097,6 +1181,7 @@ sor.setLeafSize (0.1f, 0.1f, 0.1f);
                 boundary_samples.push_back(samples);
                 boundary_samples_origins.push_back(origin);
                 boundary_samples_indices.push_back(c);
+                boundary_samples_bounds.push_back(samples_bounds);
                 // break;
             }
             // break;
@@ -1106,8 +1191,10 @@ sor.setLeafSize (0.1f, 0.1f, 0.1f);
     }
 
     std::cout << "sampling " << boundary_samples.size() << std::endl;
-    // for(int c = 0; c < boundary_samples.size(); c++){
-    for(int c = 5; c < 6; c++){
+    for(int c = 0; c < boundary_samples.size(); c++){
+    // for(int c = 6; c < boundary_samples.size(); c++){
+    // for(int c = 5; c < 6; c++){
+    
         int boundary_idx = boundary_samples_indices[c];
 
         Point n;
@@ -1172,96 +1259,404 @@ sor.setLeafSize (0.1f, 0.1f, 0.1f);
         int b = 100 + rand() % 155;
 
         double tmp_angle = uav_min_angle;
-        Point p_left = bounds[boundary_idx][0];
-        Point p_right = bounds[boundary_idx][2];
+        // Point p_left = bounds[boundary_idx][0];
+        // Point p_right = bounds[boundary_idx][2];
+        // Point p_bottom = bounds[boundary_idx][1];
+        // Point p_top = bounds[boundary_idx][3];
+        // (*boundary_cloud).push_back(p_left);
+        Point p_left = boundary_samples_bounds[c][0];
+        Point p_right = boundary_samples_bounds[c][2];
+        Point p_bottom = boundary_samples_bounds[c][1];
+        Point p_top = boundary_samples_bounds[c][3];
+
+        // Point vect_left_to_right = rectangle_vectors[c][0];
+        // Point vect_bottom_to_top = rectangle_vectors[c][1];
+        Point vect_left_to_right = get_vector(p_left, p_right);
+        Point vect_bottom_to_top = get_vector(p_bottom, p_top);
         double dist_left_to_right = vect_norm(p_left, p_right);
-        double origin_to_origin_dist = sqrt(uav_max_distance*uav_max_distance - dist_left_to_right*dist_left_to_right);
-        Point sample_area_origin;
-        sample_area_origin.x = boundary_samples_origins[c].x + origin_to_origin_dist*best_planes_normal[boundary_idx].normal_x;
-        sample_area_origin.y = boundary_samples_origins[c].y + origin_to_origin_dist*best_planes_normal[boundary_idx].normal_y;
-        sample_area_origin.z = boundary_samples_origins[c].z + origin_to_origin_dist*best_planes_normal[boundary_idx].normal_z;
+        double dist_bottom_to_top = vect_norm(p_bottom, p_top);
+        double dist_a = uav_max_distance * cos(tmp_angle);
+        double dist_b = uav_max_distance * sin(tmp_angle);
+        double dist_c = sqrt(uav_max_distance*uav_max_distance - (dist_left_to_right / 2.0)*(dist_left_to_right / 2.0));
+        double dist_a_min = uav_min_distance / tan(tmp_angle);// - (dist_left_to_right / 2.0);
+        double angle_line_intersection_dist = (dist_left_to_right / 2.0) * tan(tmp_angle);
+
+        Point origin_norm_bound;
+        origin_norm_bound.x = boundary_samples_origins[c].x + dist_c * n.x;
+        origin_norm_bound.y = boundary_samples_origins[c].y + dist_c * n.y;
+        origin_norm_bound.z = boundary_samples_origins[c].z + dist_c * n.z;
+        origin_norm_bound.r = 255;
+        origin_norm_bound.a = 255;
         
-        visualization_msgs::Marker marker;
-        marker.header.frame_id = "base_frame";
-        marker.header.stamp = ros::Time::now();
-        marker.action = visualization_msgs::Marker::ADD;
-        marker.id = 505+ 10*c -1;
-        marker.type = visualization_msgs::Marker::ARROW;
-        marker.scale.x = 0.003;
-        marker.scale.y = 0.005;
-        marker.color.g = 1.0f;
-        marker.color.a = 1.0;
-        geometry_msgs::Point p0;
-        p0.x = boundary_samples_origins[c].x;
-        p0.y = boundary_samples_origins[c].y;
-        p0.z = boundary_samples_origins[c].z;
-        // p0.x = 0;
-        // p0.y = 0;
-        // p0.z = 0;
-        geometry_msgs::Point p1;
-        p1.x = sample_area_origin.x;
-        p1.y = sample_area_origin.y;
-        p1.z = sample_area_origin.z;
-        // p1.x = (best_planes_normal[c].normal_x);
-        // p1.y = (best_planes_normal[c].normal_y);
-        // p1.z = (best_planes_normal[c].normal_z);
-        marker.points.push_back(p0);
-        marker.points.push_back(p1);
-        markerArray.markers.push_back(marker);
-        marker_pub.publish(markerArray);
+        Point left_bound;
+        Point right_bound;
+        Point bottom_bound;
+        Point top_bound;
+        if(dist_b > uav_min_distance){
+            // Point left_bound;
+            // left_bound.x = boundary_samples[c][0].x + vect_bottom_to_top.x / 2.0 + (dist_left_to_right - cos(tmp_angle)*uav_max_distance)*vect_left_to_right.x + sin(tmp_angle)*uav_max_distance*n.x;
+            // left_bound.y = boundary_samples[c][0].y + vect_bottom_to_top.y / 2.0 + (dist_left_to_right - cos(tmp_angle)*uav_max_distance)*vect_left_to_right.y + sin(tmp_angle)*uav_max_distance*n.y;
+            // left_bound.z = boundary_samples[c][0].z + vect_bottom_to_top.z / 2.0 + (dist_left_to_right - cos(tmp_angle)*uav_max_distance)*vect_left_to_right.z + sin(tmp_angle)*uav_max_distance*n.z;
+            left_bound.x = boundary_samples_origins[c].x + ((dist_a - dist_left_to_right / 2.0) / dist_left_to_right) * vect_left_to_right.x + dist_b * n.x;
+            left_bound.y = boundary_samples_origins[c].y + ((dist_a - dist_left_to_right / 2.0) / dist_left_to_right) * vect_left_to_right.y + dist_b * n.y;
+            left_bound.z = boundary_samples_origins[c].z + ((dist_a - dist_left_to_right / 2.0) / dist_left_to_right) * vect_left_to_right.z + dist_b * n.z;
+            // left_bound.x = boundary_samples_origins[c].x + (dist_left_to_right / (dist_a - dist_left_to_right / 2.0)) * vect_left_to_right.x + dist_b * n.x;
+            // left_bound.y = boundary_samples_origins[c].y + (dist_left_to_right / (dist_a - dist_left_to_right / 2.0)) * vect_left_to_right.y + dist_b * n.y;
+            // left_bound.z = boundary_samples_origins[c].z + (dist_left_to_right / (dist_a - dist_left_to_right / 2.0)) * vect_left_to_right.z + dist_b * n.z;
+            left_bound.r = 255;
+            left_bound.a = 255;
+            // Point right_bound;
+            right_bound.x = boundary_samples_origins[c].x - ((dist_a - dist_left_to_right / 2.0) / dist_left_to_right) * vect_left_to_right.x + dist_b * n.x;
+            right_bound.y = boundary_samples_origins[c].y - ((dist_a - dist_left_to_right / 2.0) / dist_left_to_right) * vect_left_to_right.y + dist_b * n.y;
+            right_bound.z = boundary_samples_origins[c].z - ((dist_a - dist_left_to_right / 2.0) / dist_left_to_right) * vect_left_to_right.z + dist_b * n.z;
+            right_bound.r = 255;
+            right_bound.a = 255;
+            // Point bottom_bound;
+            bottom_bound.x = boundary_samples_origins[c].x + ((dist_a - dist_bottom_to_top / 2.0) / dist_bottom_to_top) * vect_bottom_to_top.x + dist_b * n.x;
+            bottom_bound.y = boundary_samples_origins[c].y + ((dist_a - dist_bottom_to_top / 2.0) / dist_bottom_to_top) * vect_bottom_to_top.y + dist_b * n.y;
+            bottom_bound.z = boundary_samples_origins[c].z + ((dist_a - dist_bottom_to_top / 2.0) / dist_bottom_to_top) * vect_bottom_to_top.z + dist_b * n.z;
+            bottom_bound.r = 255;
+            bottom_bound.a = 255;
+            // Point top_bound;
+            top_bound.x = boundary_samples_origins[c].x - ((dist_a - dist_bottom_to_top / 2.0) / dist_bottom_to_top) * vect_bottom_to_top.x + dist_b * n.x;
+            top_bound.y = boundary_samples_origins[c].y - ((dist_a - dist_bottom_to_top / 2.0) / dist_bottom_to_top) * vect_bottom_to_top.y + dist_b * n.y;
+            top_bound.z = boundary_samples_origins[c].z - ((dist_a - dist_bottom_to_top / 2.0) / dist_bottom_to_top) * vect_bottom_to_top.z + dist_b * n.z;
+            top_bound.r = 255;
+            top_bound.a = 255;
+        }
+        else{
+            // Point left_bound;
+            left_bound.x = boundary_samples_origins[c].x + ((dist_a - dist_left_to_right / 2.0) / dist_left_to_right) * vect_left_to_right.x + uav_min_distance * n.x;
+            left_bound.y = boundary_samples_origins[c].y + ((dist_a - dist_left_to_right / 2.0) / dist_left_to_right) * vect_left_to_right.y + uav_min_distance * n.y;
+            left_bound.z = boundary_samples_origins[c].z + ((dist_a - dist_left_to_right / 2.0) / dist_left_to_right) * vect_left_to_right.z + uav_min_distance * n.z;
+            left_bound.r = 255;
+            left_bound.a = 255;
+            // Point right_bound;
+            right_bound.x = boundary_samples_origins[c].x - ((dist_a - dist_left_to_right / 2.0) / dist_left_to_right) * vect_left_to_right.x + uav_min_distance * n.x;
+            right_bound.y = boundary_samples_origins[c].y - ((dist_a - dist_left_to_right / 2.0) / dist_left_to_right) * vect_left_to_right.y + uav_min_distance * n.y;
+            right_bound.z = boundary_samples_origins[c].z - ((dist_a - dist_left_to_right / 2.0) / dist_left_to_right) * vect_left_to_right.z + uav_min_distance * n.z;
+            right_bound.r = 255;
+            right_bound.a = 255;
+            // Point bottom_bound;
+            bottom_bound.x = boundary_samples_origins[c].x + ((dist_a - dist_bottom_to_top / 2.0) / dist_bottom_to_top) * vect_bottom_to_top.x + uav_min_distance * n.x;
+            bottom_bound.y = boundary_samples_origins[c].y + ((dist_a - dist_bottom_to_top / 2.0) / dist_bottom_to_top) * vect_bottom_to_top.y + uav_min_distance * n.y;
+            bottom_bound.z = boundary_samples_origins[c].z + ((dist_a - dist_bottom_to_top / 2.0) / dist_bottom_to_top) * vect_bottom_to_top.z + uav_min_distance * n.z;
+            bottom_bound.r = 255;
+            bottom_bound.a = 255;
+            // Point top_bound;
+            top_bound.x = boundary_samples_origins[c].x - ((dist_a - dist_bottom_to_top / 2.0) / dist_bottom_to_top) * vect_bottom_to_top.x + uav_min_distance * n.x;
+            top_bound.y = boundary_samples_origins[c].y - ((dist_a - dist_bottom_to_top / 2.0) / dist_bottom_to_top) * vect_bottom_to_top.y + uav_min_distance * n.y;
+            top_bound.z = boundary_samples_origins[c].z - ((dist_a - dist_bottom_to_top / 2.0) / dist_bottom_to_top) * vect_bottom_to_top.z + uav_min_distance * n.z;
+            top_bound.r = 255;
+            top_bound.a = 255;
+        }
+        
 
+        // Point left_bound_min;
+        // left_bound_min.x = boundary_samples_origins[c].x + ((dist_a_min - dist_left_to_right / 2.0) / dist_left_to_right) * vect_left_to_right.x + uav_min_distance * n.x;
+        // left_bound_min.y = boundary_samples_origins[c].y + ((dist_a_min - dist_left_to_right / 2.0) / dist_left_to_right) * vect_left_to_right.y + uav_min_distance * n.y;
+        // left_bound_min.z = boundary_samples_origins[c].z + ((dist_a_min - dist_left_to_right / 2.0) / dist_left_to_right) * vect_left_to_right.z + uav_min_distance * n.z;
+        // left_bound_min.r = 255;
+        // left_bound_min.a = 255;
+        // Point right_bound_min;
+        // right_bound_min.x = boundary_samples_origins[c].x - ((dist_a_min - dist_left_to_right / 2.0) / dist_left_to_right) * vect_left_to_right.x + uav_min_distance * n.x;
+        // right_bound_min.y = boundary_samples_origins[c].y - ((dist_a_min - dist_left_to_right / 2.0) / dist_left_to_right) * vect_left_to_right.y + uav_min_distance * n.y;
+        // right_bound_min.z = boundary_samples_origins[c].z - ((dist_a_min - dist_left_to_right / 2.0) / dist_left_to_right) * vect_left_to_right.z + uav_min_distance * n.z;
+        // right_bound_min.r = 255;
+        // right_bound_min.a = 255;
+        // Point bottom_bound_min;
+        // bottom_bound_min.x = boundary_samples_origins[c].x + ((dist_a_min - dist_bottom_to_top / 2.0) / dist_bottom_to_top) * vect_bottom_to_top.x + uav_min_distance * n.x;
+        // bottom_bound_min.y = boundary_samples_origins[c].y + ((dist_a_min - dist_bottom_to_top / 2.0) / dist_bottom_to_top) * vect_bottom_to_top.y + uav_min_distance * n.y;
+        // bottom_bound_min.z = boundary_samples_origins[c].z + ((dist_a_min - dist_bottom_to_top / 2.0) / dist_bottom_to_top) * vect_bottom_to_top.z + uav_min_distance * n.z;
+        // bottom_bound_min.r = 255;
+        // bottom_bound_min.a = 255;
+        // Point top_bound_min;
+        // top_bound_min.x = boundary_samples_origins[c].x - ((dist_a_min - dist_bottom_to_top / 2.0) / dist_bottom_to_top) * vect_bottom_to_top.x + uav_min_distance * n.x;
+        // top_bound_min.y = boundary_samples_origins[c].y - ((dist_a_min - dist_bottom_to_top / 2.0) / dist_bottom_to_top) * vect_bottom_to_top.y + uav_min_distance * n.y;
+        // top_bound_min.z = boundary_samples_origins[c].z - ((dist_a_min - dist_bottom_to_top / 2.0) / dist_bottom_to_top) * vect_bottom_to_top.z + uav_min_distance * n.z;
+        // top_bound_min.r = 255;
+        // top_bound_min.a = 255;
 
-        for(int j = 0; j < boundary_samples[c].size(); j++){
-            Point curr_vec = get_vector(boundary_samples[c][j], sample_area_origin);
-            for(int i = 1; i <= 3; i++){
-                visualization_msgs::Marker marker2;
-                marker2.header.frame_id = "base_frame";
-                marker2.header.stamp = ros::Time::now();
-                marker2.action = visualization_msgs::Marker::ADD;
-                marker2.id = c+100 + 4*j + i;
-                marker2.type = visualization_msgs::Marker::POINTS;
-                marker2.scale.x = 0.005;
-                marker2.scale.y = 0.005;
-                marker2.scale.z = 0.005;
-                marker2.color.r = 0.7f;
-                marker2.color.b = 1.0f;
-                marker2.color.a = 1.0;
-                geometry_msgs::Point p2;
-                p2.x = boundary_samples[c][j].x + (i / 4.0)*curr_vec.x;
-                p2.y = boundary_samples[c][j].y + (i / 4.0)*curr_vec.y;
-                p2.z = boundary_samples[c][j].z + (i / 4.0)*curr_vec.z;
-                marker2.points.push_back(p2);
-                markerArray2.markers.push_back(marker2);
+        Point left_bound_min;
+        Point right_bound_min;
+        Point bottom_bound_min;
+        Point top_bound_min;
+        // std::cout << "angle_line_intersection_dist: " << angle_line_intersection_dist << ", uav_min_distance: " << uav_min_distance << std::endl;
+        if(angle_line_intersection_dist < uav_min_distance){
+            left_bound_min.x = boundary_samples_origins[c].x + ((dist_a_min - dist_left_to_right / 2.0) / dist_left_to_right) * vect_left_to_right.x + uav_min_distance * n.x;
+            left_bound_min.y = boundary_samples_origins[c].y + ((dist_a_min - dist_left_to_right / 2.0) / dist_left_to_right) * vect_left_to_right.y + uav_min_distance * n.y;
+            left_bound_min.z = boundary_samples_origins[c].z + ((dist_a_min - dist_left_to_right / 2.0) / dist_left_to_right) * vect_left_to_right.z + uav_min_distance * n.z;
+            left_bound_min.r = 255;
+            left_bound_min.a = 255;
+
+            right_bound_min.x = boundary_samples_origins[c].x - ((dist_a_min - dist_left_to_right / 2.0) / dist_left_to_right) * vect_left_to_right.x + uav_min_distance * n.x;
+            right_bound_min.y = boundary_samples_origins[c].y - ((dist_a_min - dist_left_to_right / 2.0) / dist_left_to_right) * vect_left_to_right.y + uav_min_distance * n.y;
+            right_bound_min.z = boundary_samples_origins[c].z - ((dist_a_min - dist_left_to_right / 2.0) / dist_left_to_right) * vect_left_to_right.z + uav_min_distance * n.z;
+            right_bound_min.r = 255;
+            right_bound_min.a = 255;
+
+            bottom_bound_min.x = boundary_samples_origins[c].x + ((dist_a_min - dist_bottom_to_top / 2.0) / dist_bottom_to_top) * vect_bottom_to_top.x + uav_min_distance * n.x;
+            bottom_bound_min.y = boundary_samples_origins[c].y + ((dist_a_min - dist_bottom_to_top / 2.0) / dist_bottom_to_top) * vect_bottom_to_top.y + uav_min_distance * n.y;
+            bottom_bound_min.z = boundary_samples_origins[c].z + ((dist_a_min - dist_bottom_to_top / 2.0) / dist_bottom_to_top) * vect_bottom_to_top.z + uav_min_distance * n.z;
+            bottom_bound_min.r = 255;
+            bottom_bound_min.a = 255;
+
+            top_bound_min.x = boundary_samples_origins[c].x - ((dist_a_min - dist_bottom_to_top / 2.0) / dist_bottom_to_top) * vect_bottom_to_top.x + uav_min_distance * n.x;
+            top_bound_min.y = boundary_samples_origins[c].y - ((dist_a_min - dist_bottom_to_top / 2.0) / dist_bottom_to_top) * vect_bottom_to_top.y + uav_min_distance * n.y;
+            top_bound_min.z = boundary_samples_origins[c].z - ((dist_a_min - dist_bottom_to_top / 2.0) / dist_bottom_to_top) * vect_bottom_to_top.z + uav_min_distance * n.z;
+            top_bound_min.r = 255;
+            top_bound_min.a = 255;
+        }
+        else{
+            left_bound_min.x = boundary_samples_origins[c].x + angle_line_intersection_dist * n.x;
+            left_bound_min.y = boundary_samples_origins[c].y + angle_line_intersection_dist * n.y;
+            left_bound_min.z = boundary_samples_origins[c].z + angle_line_intersection_dist * n.z;
+            left_bound_min.r = 255;
+            left_bound_min.a = 255;
+
+            right_bound_min.x = boundary_samples_origins[c].x + angle_line_intersection_dist * n.x;
+            right_bound_min.y = boundary_samples_origins[c].y + angle_line_intersection_dist * n.y;
+            right_bound_min.z = boundary_samples_origins[c].z + angle_line_intersection_dist * n.z;
+            right_bound_min.r = 255;
+            right_bound_min.a = 255;
+
+            bottom_bound_min.x = boundary_samples_origins[c].x + angle_line_intersection_dist * n.x;
+            bottom_bound_min.y = boundary_samples_origins[c].y + angle_line_intersection_dist * n.y;
+            bottom_bound_min.z = boundary_samples_origins[c].z + angle_line_intersection_dist * n.z;
+            bottom_bound_min.r = 255;
+            bottom_bound_min.a = 255;
+
+            top_bound_min.x = boundary_samples_origins[c].x + angle_line_intersection_dist * n.x;
+            top_bound_min.y = boundary_samples_origins[c].y + angle_line_intersection_dist * n.y;
+            top_bound_min.z = boundary_samples_origins[c].z + angle_line_intersection_dist * n.z;
+            top_bound_min.r = 255;
+            top_bound_min.a = 255;
+        }
+
+        // (*boundary_cloud).push_back(left_bound);
+        // (*boundary_cloud).push_back(right_bound);
+        // (*boundary_cloud).push_back(bottom_bound);
+        // (*boundary_cloud).push_back(top_bound);
+        // (*boundary_cloud).push_back(origin_norm_bound);
+        // (*boundary_cloud).push_back(left_bound_min);
+        // (*boundary_cloud).push_back(right_bound_min);
+        // (*boundary_cloud).push_back(bottom_bound_min);
+        // (*boundary_cloud).push_back(top_bound_min);
+        std::vector<Point> bound_points_min;
+        std::vector<Point> bound_points_middle;
+        std::vector<Point> bound_points;
+        bound_points_middle.push_back(left_bound);
+        bound_points_middle.push_back(right_bound);
+        bound_points_middle.push_back(bottom_bound);
+        bound_points_middle.push_back(top_bound);
+        bound_points.push_back(origin_norm_bound);
+        bound_points_min.push_back(left_bound_min);
+        bound_points_min.push_back(right_bound_min);
+        bound_points_min.push_back(bottom_bound_min);
+        bound_points_min.push_back(top_bound_min);
+
+        for(int i = 0; i < area_samples_mid; i++){
+            Point v1 = get_vector(left_bound, top_bound);
+            Point v2 = get_vector(left_bound, bottom_bound);
+            Point v3 = get_vector(right_bound, top_bound);
+            Point v4 = get_vector(right_bound, bottom_bound);
+            Point v5 = get_vector(left_bound_min, top_bound_min);
+            Point v6 = get_vector(left_bound_min, bottom_bound_min);
+            Point v7 = get_vector(right_bound_min, top_bound_min);
+            Point v8 = get_vector(right_bound_min, bottom_bound_min);
+
+            Point new_sample1;
+            new_sample1.x = left_bound.x + ((i + 1.0) /  (area_samples_mid + 1.0)) * v1.x;
+            new_sample1.y = left_bound.y + ((i + 1.0) /  (area_samples_mid + 1.0)) * v1.y;
+            new_sample1.z = left_bound.z + ((i + 1.0) /  (area_samples_mid + 1.0)) * v1.z;
+            Point new_sample2;
+            new_sample2.x = left_bound.x + ((i + 1.0) /  (area_samples_mid + 1.0)) * v2.x;
+            new_sample2.y = left_bound.y + ((i + 1.0) /  (area_samples_mid + 1.0)) * v2.y;
+            new_sample2.z = left_bound.z + ((i + 1.0) /  (area_samples_mid + 1.0)) * v2.z;
+            Point new_sample3;
+            new_sample3.x = right_bound.x + ((i + 1.0) /  (area_samples_mid + 1.0)) * v3.x;
+            new_sample3.y = right_bound.y + ((i + 1.0) /  (area_samples_mid + 1.0)) * v3.y;
+            new_sample3.z = right_bound.z + ((i + 1.0) /  (area_samples_mid + 1.0)) * v3.z;
+            Point new_sample4;
+            new_sample4.x = right_bound.x + ((i + 1.0) /  (area_samples_mid + 1.0)) * v4.x;
+            new_sample4.y = right_bound.y + ((i + 1.0) /  (area_samples_mid + 1.0)) * v4.y;
+            new_sample4.z = right_bound.z + ((i + 1.0) /  (area_samples_mid + 1.0)) * v4.z;
+
+            Point new_sample5;
+            new_sample5.x = left_bound_min.x + ((i + 1.0) /  (area_samples_mid + 1.0)) * v5.x;
+            new_sample5.y = left_bound_min.y + ((i + 1.0) /  (area_samples_mid + 1.0)) * v5.y;
+            new_sample5.z = left_bound_min.z + ((i + 1.0) /  (area_samples_mid + 1.0)) * v5.z;
+            Point new_sample6;
+            new_sample6.x = left_bound_min.x + ((i + 1.0) /  (area_samples_mid + 1.0)) * v6.x;
+            new_sample6.y = left_bound_min.y + ((i + 1.0) /  (area_samples_mid + 1.0)) * v6.y;
+            new_sample6.z = left_bound_min.z + ((i + 1.0) /  (area_samples_mid + 1.0)) * v6.z;
+            Point new_sample7;
+            new_sample7.x = right_bound_min.x + ((i + 1.0) /  (area_samples_mid + 1.0)) * v7.x;
+            new_sample7.y = right_bound_min.y + ((i + 1.0) /  (area_samples_mid + 1.0)) * v7.y;
+            new_sample7.z = right_bound_min.z + ((i + 1.0) /  (area_samples_mid + 1.0)) * v7.z;
+            Point new_sample8;
+            new_sample8.x = right_bound_min.x + ((i + 1.0) /  (area_samples_mid + 1.0)) * v8.x;
+            new_sample8.y = right_bound_min.y + ((i + 1.0) /  (area_samples_mid + 1.0)) * v8.y;
+            new_sample8.z = right_bound_min.z + ((i + 1.0) /  (area_samples_mid + 1.0)) * v8.z;
+
+            bound_points_middle.push_back(new_sample1);
+            bound_points_middle.push_back(new_sample2);
+            bound_points_middle.push_back(new_sample3);
+            bound_points_middle.push_back(new_sample4);
+            bound_points_min.push_back(new_sample5);
+            bound_points_min.push_back(new_sample6);
+            bound_points_min.push_back(new_sample7);
+            bound_points_min.push_back(new_sample8);
+        }
+
+        for(int i = 0; i < area_samples_first; i++){
+            for(int j = 0; j < bound_points_min.size(); j++){
+                Point v = get_vector(bound_points_min[j], bound_points_middle[j]);
+
+                Point new_sample;
+                new_sample.x = bound_points_min[j].x + ((i + 1.0) /  (area_samples_first + 1.0)) * v.x;
+                new_sample.y = bound_points_min[j].y + ((i + 1.0) /  (area_samples_first + 1.0)) * v.y;
+                new_sample.z = bound_points_min[j].z + ((i + 1.0) /  (area_samples_first + 1.0)) * v.z;
+
+                new_sample.r = 200;
+                new_sample.g = 100;
+                new_sample.b = 255;
+                new_sample.a = 255;
+
+                bound_points.push_back(new_sample);
             }
         }
-        visualization_msgs::Marker marker2;
-        marker2.header.frame_id = "base_frame";
-        marker2.header.stamp = ros::Time::now();
-        marker2.action = visualization_msgs::Marker::ADD;
-        marker2.id = c+100 + 113;
-        marker2.type = visualization_msgs::Marker::POINTS;
-        marker2.scale.x = 0.005;
-        marker2.scale.y = 0.005;
-        marker2.scale.z = 0.005;
-        marker2.color.r = 0.7f;
-        marker2.color.b = 1.0f;
-        marker2.color.a = 1.0;
-        geometry_msgs::Point p2;
-        p2.x = sample_area_origin.x;
-        p2.y = sample_area_origin.y;
-        p2.z = sample_area_origin.z;
-        marker2.points.push_back(p2);
-        markerArray2.markers.push_back(marker2);
 
-        for(int j = 0; j < 3000; j++){
+        for(int i = 0; i < area_samples_second; i++){
+            for(int j = 0; j < bound_points_min.size(); j++){
+                Point v = get_vector(bound_points_middle[j], origin_norm_bound);
+
+                Point new_sample;
+                new_sample.x = bound_points_middle[j].x + ((i + 1.0) /  (area_samples_second + 1.0)) * v.x;
+                new_sample.y = bound_points_middle[j].y + ((i + 1.0) /  (area_samples_second + 1.0)) * v.y;
+                new_sample.z = bound_points_middle[j].z + ((i + 1.0) /  (area_samples_second + 1.0)) * v.z;
+
+                new_sample.r = 255;
+                new_sample.g = 0;
+                new_sample.b = 255;
+                new_sample.a = 255;
+
+                bound_points.push_back(new_sample);
+            }
+        }
+
+        for(int i = 0; i < bound_points_middle.size(); i++){
+            bound_points_middle[i].r = 255;
+            bound_points_middle[i].g = 0;
+            bound_points_middle[i].b = 0;
+            bound_points_middle[i].a = 255;
+            bound_points.push_back(bound_points_middle[i]);
+        }
+
+        for(int i = 0; i < bound_points_min.size(); i++){
+            bound_points_min[i].r = 250;
+            bound_points_min[i].g = 200;
+            bound_points_min[i].b = 0;
+            bound_points_min[i].a = 255;
+            bound_points.push_back(bound_points_min[i]);
+        }
+
+        for(int i = 0; i < bound_points.size(); i++){
+            (*boundary_cloud).push_back(bound_points[i]);
+
+            suitable_area_points.push_back(bound_points[i]);
+            suitable_areas_points_indices.push_back(c);
+        }
+
+        // double origin_to_origin_dist = sqrt(uav_max_distance*uav_max_distance - dist_left_to_right*dist_left_to_right);
+        // Point sample_area_origin;
+        // sample_area_origin.x = boundary_samples_origins[c].x + origin_to_origin_dist*best_planes_normal[boundary_idx].normal_x;
+        // sample_area_origin.y = boundary_samples_origins[c].y + origin_to_origin_dist*best_planes_normal[boundary_idx].normal_y;
+        // sample_area_origin.z = boundary_samples_origins[c].z + origin_to_origin_dist*best_planes_normal[boundary_idx].normal_z;
+        
+        // visualization_msgs::Marker marker;
+        // marker.header.frame_id = "base_frame";
+        // marker.header.stamp = ros::Time::now();
+        // marker.action = visualization_msgs::Marker::ADD;
+        // marker.id = 505+ 10*c -1;
+        // marker.type = visualization_msgs::Marker::ARROW;
+        // marker.scale.x = 0.003;
+        // marker.scale.y = 0.005;
+        // marker.color.g = 1.0f;
+        // marker.color.a = 1.0;
+        // geometry_msgs::Point p0;
+        // p0.x = boundary_samples_origins[c].x;
+        // p0.y = boundary_samples_origins[c].y;
+        // p0.z = boundary_samples_origins[c].z;
+        // // p0.x = 0;
+        // // p0.y = 0;
+        // // p0.z = 0;
+        // geometry_msgs::Point p1;
+        // p1.x = sample_area_origin.x;
+        // p1.y = sample_area_origin.y;
+        // p1.z = sample_area_origin.z;
+        // // p1.x = (best_planes_normal[c].normal_x);
+        // // p1.y = (best_planes_normal[c].normal_y);
+        // // p1.z = (best_planes_normal[c].normal_z);
+        // marker.points.push_back(p0);
+        // marker.points.push_back(p1);
+        // markerArray.markers.push_back(marker);
+        // marker_pub.publish(markerArray);
+
+
+        // for(int j = 0; j < boundary_samples[c].size(); j++){
+        //     Point curr_vec = get_vector(boundary_samples[c][j], sample_area_origin);
+        //     for(int i = 1; i <= 3; i++){
+        //         visualization_msgs::Marker marker2;
+        //         marker2.header.frame_id = "base_frame";
+        //         marker2.header.stamp = ros::Time::now();
+        //         marker2.action = visualization_msgs::Marker::ADD;
+        //         marker2.id = c+100 + 4*j + i;
+        //         marker2.type = visualization_msgs::Marker::POINTS;
+        //         marker2.scale.x = 0.005;
+        //         marker2.scale.y = 0.005;
+        //         marker2.scale.z = 0.005;
+        //         marker2.color.r = 0.7f;
+        //         marker2.color.b = 1.0f;
+        //         marker2.color.a = 1.0;
+        //         geometry_msgs::Point p2;
+        //         p2.x = boundary_samples[c][j].x + (i / 4.0)*curr_vec.x;
+        //         p2.y = boundary_samples[c][j].y + (i / 4.0)*curr_vec.y;
+        //         p2.z = boundary_samples[c][j].z + (i / 4.0)*curr_vec.z;
+        //         marker2.points.push_back(p2);
+        //         markerArray2.markers.push_back(marker2);
+        //     }
+        // }
+        // visualization_msgs::Marker marker2;
+        // marker2.header.frame_id = "base_frame";
+        // marker2.header.stamp = ros::Time::now();
+        // marker2.action = visualization_msgs::Marker::ADD;
+        // marker2.id = c+100 + 113;
+        // marker2.type = visualization_msgs::Marker::POINTS;
+        // marker2.scale.x = 0.005;
+        // marker2.scale.y = 0.005;
+        // marker2.scale.z = 0.005;
+        // marker2.color.r = 0.7f;
+        // marker2.color.b = 1.0f;
+        // marker2.color.a = 1.0;
+        // geometry_msgs::Point p2;
+        // p2.x = sample_area_origin.x;
+        // p2.y = sample_area_origin.y;
+        // p2.z = sample_area_origin.z;
+        // marker2.points.push_back(p2);
+        // markerArray2.markers.push_back(marker2);
+
+        
+        for(int j = 0; j < 15000; j++){
+            continue;
             // double min = -(sample_criterion / 2.0);
             // double max = sample_criterion / 2.0;
-            double min = -0.8;
-            double max = 0.8;
+            double min = -1.0;
+            double max = 1.0;
             // double x = min + static_cast <double> (rand()) /( static_cast <double> (RAND_MAX/(max - min)));
             double x = min + static_cast <double> (rand()) /( static_cast <double> (RAND_MAX/(max - min)));
-            // double y = min + static_cast <double> (rand()) /( static_cast <double> (RAND_MAX/(max - min)));
-            double y = (min + 0.4) + static_cast <double> (rand()) /( static_cast <double> (RAND_MAX/((max - 0.4) - (min + 0.4))));
+            double y = min + static_cast <double> (rand()) /( static_cast <double> (RAND_MAX/(max - min)));
+            // double y = (min + 0.4) + static_cast <double> (rand()) /( static_cast <double> (RAND_MAX/((max - 0.4) - (min + 0.4))));
             double z = min + static_cast <double> (rand()) /( static_cast <double> (RAND_MAX/(max - min)));
             Point p_rand;
             p_rand.x = boundary_samples_origins[c].x + x;
@@ -1559,7 +1954,14 @@ sor.setLeafSize (0.1f, 0.1f, 0.1f);
                 p3.y = p_rand.y;
                 p3.z = p_rand.z;
                 marker3.points.push_back(p3);
-                markerArray3.markers.push_back(marker3);
+                // markerArray3.markers.push_back(marker3);
+
+                p_rand.r = 255;
+                p_rand.g = 255;
+                p_rand.b = 255;
+                p_rand.a = 255;
+
+                (*boundary_cloud).push_back(p_rand);
 
                 // Point vec = get_vector(boundary_samples_origins[c], p_rand);
 
@@ -1630,6 +2032,7 @@ sor.setLeafSize (0.1f, 0.1f, 0.1f);
                 j--;
                 continue;
             }
+            
 
             // geometry_msgs::Point p3;
             //     p3.x = p_rand.x;
@@ -1643,12 +2046,13 @@ sor.setLeafSize (0.1f, 0.1f, 0.1f);
             
         }
         // break;
-        std::cout << "after all" << std::endl;
+        std::cout << "after sampling" << std::endl;
+        
     }
+    std::cout << "after all samplings" << std::endl;
 
 
-
-
+    /*
     std::cout << "GTSP matrix" << std::endl;
     // create GTSP matrix
     std::stringstream gtsp_matrix;
@@ -1747,35 +2151,62 @@ sor.setLeafSize (0.1f, 0.1f, 0.1f);
     } else {
         ROS_ERROR("[%s]: Unable to open file.", ros::this_node::getName().c_str());
     }
-    // system(command.str().c_str());
+    std::cout << "command call" << std::endl;
+    system(command.str().c_str());
 
-    // std::vector<int> solution;
-    // std::ifstream         in(tour_path.str());
-    // if (in.is_open()) {
-    //     std::string line;
-    //     bool        tour_started = false;
-    //     while (std::getline(in, line)) {
-    //     if (line == "-1") {
-    //         break;
-    //     }
-    //     if (tour_started) {
-    //         solution.push_back(std::stoi(line) - 1);
-    //     }
-    //     if (line == "TOUR_SECTION") {
-    //         tour_started = true;
-    //     }
-    //     }
-    //     in.close();
-    // }
+    std::cout << "solution reading" << std::endl;
+    std::vector<int> solution;
+    std::ifstream         in(tour_path.str());
+    if (in.is_open()) {
+        std::string line;
+        bool        tour_started = false;
+        while (std::getline(in, line)) {
+        if (line == "-1") {
+            break;
+        }
+        if (tour_started) {
+            solution.push_back(std::stoi(line) - 1);
+        }
+        if (line == "TOUR_SECTION") {
+            tour_started = true;
+        }
+        }
+        in.close();
+    }
+    std::cout << "solution reading ok" << std::endl;
 
+    for(int i = 0; i < solution.size(); i++){
+        int sol_idx = solution[i];
+        std::cout << "sol: " << sol_idx << std::endl;
+        // markerArray3.markers[sol_idx].color.r = ((suitable_areas_points_indices[sol_idx] + 1.0) / solution.size() ) * 1.0f;
+        // markerArray3.markers[sol_idx].color.g = 0.0f;
+        // markerArray3.markers[sol_idx].color.b = ((suitable_areas_points_indices[sol_idx] + 1.0) / solution.size() ) * 1.0f;
+    }
+
+
+
+    // SENDING SERVICE TO PLANNER
+    // ros::ServiceClient client = nh.serviceClient<mrs_msgs::GetPath>("get_path");
+    // ros::ServiceClient client = nh.serviceClient<srv::GetPath>("get_path");
+    // GetPath srv;
+    // srv.frame_id = "base_frame";
+    // mrs_msgs::Reference positions[solution.size()];
     // for(int i = 0; i < solution.size(); i++){
-    //     int sol_idx = solution[i];
-    //     std::cout << "sol: " << sol_idx << std::endl;
-    //     markerArray3.markers[sol_idx].color.r = ((suitable_areas_points_indices[sol_idx] + 1.0) / solution.size() ) * 1.0f;
-    //     markerArray3.markers[sol_idx].color.g = 0.0f;
-    //     markerArray3.markers[sol_idx].color.b = ((suitable_areas_points_indices[sol_idx] + 1.0) / solution.size() ) * 1.0f;
+    //     mrs_msgs::Reference ref;
+    //     ref.position.x = (*cloud)[solution[i]].x;
+    //     ref.position.y = (*cloud)[solution[i]].y;
+    //     ref.position.z = (*cloud)[solution[i]].z;
+    //     positions[i] = ref;
     // }
+    // srv.path = positions;
 
+    // bool call_code = client.call(srv);
+    // if(call_code){
+    //     ROS_INFO("success: %d", srv.response.success);
+    // }
+    // else{
+    //     ROS_ERROR("Failed to call service getPath");
+    // }
 
 
 
@@ -1786,8 +2217,8 @@ sor.setLeafSize (0.1f, 0.1f, 0.1f);
     //     point.b = 255;
 	// }
 
-    K = 11;
-    epsilon = 0.1;
+    // K = 11;
+    // epsilon = 0.1;
     // pcl::PointCloud<pcl::Normal>::Ptr boundary_cloud_normals = get_normal_vectors(boundary_cloud, K, epsilon);
     // std::map<unsigned long int, std::vector<int>> boundary_cloud_neighbours = get_neighbours(boundary_cloud, K, epsilon);
     // std::map<unsigned long int, std::vector<std::pair<int, double>>> boundary_cloud_neighbours_distances = get_neighbours_distances(boundary_cloud, K, epsilon);
@@ -1836,10 +2267,10 @@ sor.setLeafSize (0.1f, 0.1f, 0.1f);
     marker_pub.publish(markerArray);
     marker_pub2.publish(markerArray2);
     marker_pub3.publish(markerArray3);
-
-    
-    
     */
+    
+    
+    
     std::cout << " <<< ===== DONE ===== >>>" << std::endl;
     ros::Rate loop_rate(4);
 	while (nh.ok())
@@ -1851,15 +2282,15 @@ sor.setLeafSize (0.1f, 0.1f, 0.1f);
 
 		//colored_cloud->header.frame_id = "base_frame";
         
-        // boundary_cloud->header.frame_id = "base_frame";
-        // boundary_projections->header.frame_id = "base_frame";
+        boundary_cloud->header.frame_id = "base_frame";
+        boundary_projections->header.frame_id = "base_frame";
 
-		pub.publish (*cloud);
+		// pub.publish (*cloud);
         // pub.publish (*new_cloud);
 
-        // pub.publish (*final_cloud);
-        // pub2.publish (*boundary_cloud);
-        // pub3.publish (*boundary_projections);
+        pub.publish (*final_cloud);
+        pub2.publish (*boundary_cloud);
+        pub3.publish (*boundary_projections);
 
 //         pc_pub.publish(*cloud_normals);
         
