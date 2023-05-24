@@ -14,6 +14,8 @@ find_package(catkin REQUIRED COMPONENTS
   pcl_conversions
   pcl_ros
   mrs_lib
+  mrs_msgs
+  pathfinder
 )
 
 # find_package(OpenMP REQUIRED)
@@ -79,10 +81,11 @@ find_package(catkin REQUIRED COMPONENTS
 # )
 
 ## Generate added messages and services with any dependencies listed here
-# generate_messages(
-#   DEPENDENCIES
-#   std_msgs
-# )
+generate_messages(
+  DEPENDENCIES
+  std_msgs
+  mrs_msgs
+)
 
 ################################################
 ## Declare ROS dynamic reconfigure parameters ##
@@ -114,14 +117,13 @@ find_package(catkin REQUIRED COMPONENTS
 ## CATKIN_DEPENDS: catkin_packages dependent projects also need
 ## DEPENDS: system dependencies of this project that dependent projects also need
 catkin_package(
-#  INCLUDE_DIRS include
+ INCLUDE_DIRS include
 #  LIBRARIES bakalarka
-#  CATKIN_DEPENDS roscpp std_msgs
+ CATKIN_DEPENDS roscpp std_msgs mrs_msgs
 #  DEPENDS system_lib
     # DEPENDS
     #     OpenMP
 )
-
 
 ###########
 ## Build ##
@@ -130,7 +132,7 @@ catkin_package(
 ## Specify additional locations of header files
 ## Your package locations should be listed before other locations
 include_directories(
-# include
+  include
   ${catkin_INCLUDE_DIRS}
 )
 
@@ -220,16 +222,17 @@ include_directories(
 # catkin_add_nosetests(test)
 
 add_executable(pc_detection src/main.cpp)
-add_executable(msg src/msg.cpp)
+# add_executable(msg src/msg.cpp)
 # add_executable(pc_detection src/main.cpp src/angle_criterion.cpp src/halfdisc_criterion.cpp src/shape_criterion.cpp src/boundary_coherence.cpp)
 # target_compile_options(pc_detection PRIVATE ${OpenMP_FLAGS})
 # target_link_libraries(main ${catkin_LIBRARIES})
 add_dependencies(pc_detection ${catkin_EXPORTED_TARGETS})
-add_dependencies(msg ${catkin_EXPORTED_TARGETS})
+# add_dependencies(msg ${catkin_EXPORTED_TARGETS})
 
 target_link_libraries(pc_detection
   ${catkin_LIBRARIES}
   # ${OpenMP_LIBS}
 )
-target_link_libraries(msg ${catkin_LIBRARIES})
+# target_link_libraries(msg ${catkin_LIBRARIES})
+target_link_libraries(pc_detection ${catkin_LIBRARIES})
 
