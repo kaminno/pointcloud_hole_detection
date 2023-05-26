@@ -1,0 +1,14 @@
+<?xml version="1.0"?>
+<robot name="visual">
+
+  <!--<link name="uav1/gps_origin">-->
+  <link name="frame">
+    <visual>
+      <origin rpy="0.0 0 0" xyz="0 0 0"/>
+      <geometry>
+        <mesh filename="package://naki_gazebo_resources/models/novy_malin/meshes/novy_malin.dae"/>
+      </geometry>
+    </visual>
+  </link>
+
+</robot>

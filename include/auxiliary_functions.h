@@ -8,6 +8,8 @@
 #include <map>
 #include <utility>
 #include <chrono>
+#include <string>
+#include <sstream>
 
 // ROS libraries
 // #include <pcl_ros/point_cloud.h>
@@ -671,6 +673,17 @@ std::vector<Point> project_mis(std::vector<Point> mis, pcl::PointCloud<pcl::Norm
     return projected_mis;
 }
 
+void tokenize(std::string const &str, const char delim, 
+            std::vector<std::string> &out) 
+{ 
+    // construct a stream from the string 
+    std::stringstream ss(str); 
+ 
+    std::string s; 
+    while (std::getline(ss, s, delim)) { 
+        out.push_back(s); 
+    } 
+} 
 
 
 

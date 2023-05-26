@@ -47,9 +47,9 @@ std::vector<std::vector<int>> get_boundary_points(PointCloud cloud, int K, doubl
             // (*cloud)[i].g = 255;
             // (*cloud)[i].b = 255;
             
-            (*cloud)[i].r = 255;
-            (*cloud)[i].g = 0;
-            (*cloud)[i].b = 0;
+            // (*cloud)[i].r = 255;
+            // (*cloud)[i].g = 0;
+            // (*cloud)[i].b = 0;
 
             // (*cloud)[i].r = 255;
             // (*cloud)[i].g = 50;

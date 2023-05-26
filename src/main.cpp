@@ -50,6 +50,8 @@
 #include <mrs_msgs/PathSrv.h>
 #include <mrs_msgs/Path.h>
 
+#include <nav_msgs/Odometry.h>
+
 
 // #include "auxiliary_functions.h"
 
@@ -57,6 +59,73 @@
 // typedef pcl::PointCloud<pcl::PointXYZ> PointCloud;
 typedef pcl::PointCloud<pcl::PointNormal> PointCloudN;
 #include <omp.h>
+
+void callback(const nav_msgs::Odometry::ConstPtr& msg, ros::Publisher pub, PointCloud cld){
+    // ROS_INFO("I heard on /uav%d/acceleration", uav->getId());
+    // uav->setLinearAcceleration(msg->position.x, msg->position.y, msg->position.z);
+    // uav->setAngularAcceleration(msg->heading);
+    Point p;
+    p.x = msg->pose.pose.position.x;
+    p.y = msg->pose.pose.position.y;
+    p.z = msg->pose.pose.position.z;
+    p.g = 255;
+    p.a = 255;
+    (*cld).push_back(p);
+    // ROS_INFO("\tx: %f, y: %f, z: %f, heading: %f", p.x, p.y, p.z, 0.0);
+    pub.publish(cld);
+}
+
+void callback_scan(const sensor_msgs::PointCloud2::ConstPtr& msg, ros::Publisher pub, PointCloud cld, std::vector<Point> viewpoints, PointCloud scans, std::vector<bool> visited){
+    //(*cld).push_back(p);
+    // ROS_INFO("\tx: %f, y: %f, z: %f, heading: %f", p.x, p.y, p.z, 0.0);
+    // PointCloud final_cloud (new pcl::PointCloud<pcl::PointXYZRGB>);// = pcl::PointCloud<pcl::PointXYZRGB>::Ptr(cloud);
+    // final_cloud->width = msg->width;
+    // final_cloud->height = msg->height;
+    // final_cloud->header.frame_id = frame_id;
+    //pcl::copyPointCloud<Point>(*msg, *final_cloud);
+    // final_cloud = msg;
+    bool send = false;
+    Point drone_pose;
+    for(int i = 0; i < viewpoints.size(); i++){
+        Point uav_position = cld->back();
+        double dist = vect_norm(uav_position, viewpoints[i]);
+        if(dist < 0.1){//} && !visited[i] && uav_position.z < 9.0){
+            ROS_INFO("Near the viewpoint, scanning.");
+            send = true;
+            visited[i] = true;
+            drone_pose = viewpoints[i];
+            std::cout << "visited: ";
+            for(int j = 0; j < visited.size(); j++){
+                std::cout << visited[j] << " ";
+            }
+            std::cout << std::endl;
+            break;
+        }
+    }
+    pcl::PCLPointCloud2 pcl_pc2;
+    pcl_conversions::toPCL(*msg,pcl_pc2);
+    pcl::PointCloud<pcl::PointXYZRGB>::Ptr temp_cloud(new pcl::PointCloud<pcl::PointXYZRGB>);
+    pcl::fromPCLPointCloud2(pcl_pc2,*temp_cloud);
+    temp_cloud->header.frame_id = "frame";
+    if(send){
+        // (*scans) += (*temp_cloud);
+        for(int i = 0; i < (*temp_cloud).size(); i++){
+            Point p = (*temp_cloud)[i];
+            //double dist = vect_norm(p, drone_pose);
+            double dist = sqrt(p.x * p.x + p.y * p.y + p.z * p.z);
+            if(dist < 3 && (p.y + drone_pose.y) < -5){
+                p.x += drone_pose.x;
+                p.y += drone_pose.y;
+                p.z += drone_pose.z;
+                p.r = 255;
+                p.a = 255;
+                (*scans).push_back(p);
+            }
+        }
+        // pub.publish(*temp_cloud);
+        pub.publish(*scans);
+    }
+}
 
 int main(int argc, char* argv[]){
 	const std::string node_name("pc_detection");
@@ -68,6 +137,9 @@ int main(int argc, char* argv[]){
 	ros::Publisher pub = nh.advertise<sensor_msgs::PointCloud2>("cloud", queue_length);
     ros::Publisher pub2 = nh.advertise<sensor_msgs::PointCloud2>("bound", queue_length);
     ros::Publisher pub3 = nh.advertise<sensor_msgs::PointCloud2>("proj", queue_length);
+    ros::Publisher pub_callback = nh.advertise<sensor_msgs::PointCloud2>("uav", queue_length);
+    ros::Publisher pub_callback_scan = nh.advertise<sensor_msgs::PointCloud2>("scan", queue_length);
+    ros::Publisher pub_final_data = nh.advertise<sensor_msgs::PointCloud2>("final_data", queue_length);
     ros::Publisher marker_pub = nh.advertise<visualization_msgs::MarkerArray>("visualization_marker_array", queue_length);
     ros::Publisher marker_pub2 = nh.advertise<visualization_msgs::MarkerArray>("visualization_marker_array", queue_length);
     ros::Publisher marker_pub3 = nh.advertise<visualization_msgs::MarkerArray>("visualization_marker_array", queue_length);
@@ -144,6 +216,9 @@ int main(int argc, char* argv[]){
     pl.loadParam(node_name + "/uav_end_z", uav_end_z);
     pl.loadParam(node_name + "/uav_end_heading", uav_end_heading);
 
+    bool listen;
+    pl.loadParam(node_name + "/listen", listen);
+
     uav_min_angle *= (2 * M_PI) / 360.0 ;
 
     srand(time(NULL));
@@ -159,6 +234,16 @@ int main(int argc, char* argv[]){
 
     PointCloud boundary_cloud (new pcl::PointCloud<pcl::PointXYZRGB>);
     PointCloud boundary_projections (new pcl::PointCloud<pcl::PointXYZRGB>);
+    PointCloud uav_cloud (new pcl::PointCloud<pcl::PointXYZRGB>);
+    PointCloud scan_cloud (new pcl::PointCloud<pcl::PointXYZRGB>);
+    uav_cloud->header.frame_id = frame_id;
+    scan_cloud->header.frame_id = frame_id;
+    Point p_uav_orig;
+    p_uav_orig.x = 0;
+    p_uav_orig.y = 0;
+    p_uav_orig.z = 0;
+    uav_cloud->push_back(p_uav_orig);
+    scan_cloud->push_back(p_uav_orig);
     
     const std::string pcl_file_name(abs_path + name);
 	pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud (new pcl::PointCloud<pcl::PointXYZRGB>);
@@ -169,6 +254,32 @@ int main(int argc, char* argv[]){
 	// 	PCL_ERROR ("Couldn't read file\n");
 	// 	return (-1);
 	// }
+
+    // loading scan
+    pcl::PointCloud<pcl::PointXYZRGB>::Ptr final_scan_data (new pcl::PointCloud<pcl::PointXYZRGB>);
+    if (pcl::io::loadPCDFile ("/home/honzuna/.ros/scan.pcd", *final_scan_data) == -1) //* load the file
+	{
+		PCL_ERROR ("Couldn't read file\n");
+		return (-1);
+	}
+    std::cout << "Loaded " << final_scan_data->width * final_scan_data->height << " data points with the following fields "	<< std::endl;
+    // for (auto& point: *final_scan_data){  
+    pcl::PointCloud<pcl::PointXYZRGB>::Ptr scan_to_send (new pcl::PointCloud<pcl::PointXYZRGB>); 
+    for (int i = 0; i < (*final_scan_data).size(); i++){     
+        Point point;
+        point.x = (*final_scan_data)[i].x;
+        point.y = (*final_scan_data)[i].y;
+        point.z = (*final_scan_data)[i].z;
+        point.r = 255;
+        point.g = 255;
+        point.b = 255;
+        (*scan_to_send).push_back(point);
+	}
+    scan_to_send->header.frame_id = frame_id;
+    ros::Publisher pub_mis_data = nh.advertise<sensor_msgs::PointCloud2>("missing_data", queue_length);
+    pub_mis_data.publish(scan_to_send);
+
+
 
     pcl::PointCloud<pcl::PointXYZRGB>::Ptr cld (new pcl::PointCloud<pcl::PointXYZRGB>);	
 	if (pcl::io::loadPCDFile (pcl_file_name, *cld) == -1)
@@ -227,10 +338,10 @@ sor.setLeafSize (0.1f, 0.1f, 0.1f);
   std::cerr << "PointCloud after filtering: " << cloud_filtered->width * cloud_filtered->height 
        << " data points (" << pcl::getFieldsList (*cloud_filtered) << ")." << std::endl;
 
-    (*cloud).clear();
-    (*cloud).width = pcl_pc2->width;
-    (*cloud).height = pcl_pc2->height;
-    pcl::fromPCLPointCloud2((*cloud_filtered), (*cloud));
+    // (*cloud).clear();
+    // (*cloud).width = pcl_pc2->width;
+    // (*cloud).height = pcl_pc2->height;
+    // pcl::fromPCLPointCloud2((*cloud_filtered), (*cloud));
 
 
 
@@ -474,7 +585,7 @@ sor.setLeafSize (0.1f, 0.1f, 0.1f);
         best_planes_origin.push_back(best_plane_origin);
         best_planes_normal.push_back(best_plane_normal);
 
-        (*boundary_cloud).push_back(best_plane_origin);
+        // (*boundary_cloud).push_back(best_plane_origin);
         best_plane_origin.r = 255;
         best_plane_origin.b = 255;
         best_plane_origin.a = 255;
@@ -939,9 +1050,15 @@ sor.setLeafSize (0.1f, 0.1f, 0.1f);
                 // std::cout << "sample_width_start: " << sample_width_start << " / dist_left_to_right: " << dist_left_to_right << std::endl;
 
                 int sample_max = 5;
-                int r = 100 + rand() % 155;
-                int g = 100 + rand() % 155;
-                int b = 100 + rand() % 155;
+                // int r = 100 + rand() % 155;
+                // int g = 100 + rand() % 155;
+                // int b = 100 + rand() % 155;
+                int r = 0;
+                int g = 0;
+                int b = 0;
+                // int r = 0;
+                // int g = 0;
+                // int b = 255;
                 // int r = 255;
                 // int g = 255;
                 // int b = 0;
@@ -1267,7 +1384,7 @@ sor.setLeafSize (0.1f, 0.1f, 0.1f);
 
         std::cout << "after while" << std::endl;
     }
-
+    
     std::cout << "sampling " << boundary_samples.size() << std::endl;
     for(int c = 0; c < boundary_samples.size(); c++){
     // for(int c = 6; c < boundary_samples.size(); c++){
@@ -1641,6 +1758,9 @@ sor.setLeafSize (0.1f, 0.1f, 0.1f);
 
         for(int i = 0; i < bound_points.size(); i++){
             // (*boundary_cloud).push_back(bound_points[i]);
+            bound_points[i].r = 255 - (i * 50);
+            bound_points[i].g = 255;
+            bound_points[i].b = 255 - (i*100);
             (*areas_cloud).push_back(bound_points[i]);
 
             suitable_area_points.push_back(bound_points[i]);
@@ -2129,14 +2249,26 @@ sor.setLeafSize (0.1f, 0.1f, 0.1f);
         
     }
     std::cout << "after all samplings" << std::endl;
-
-
     
+
+    // Adding starting and ending point;
+    Point drone_starting_position;
+    drone_starting_position.x = uav_start_x;
+    drone_starting_position.y = uav_start_y;
+    drone_starting_position.z = uav_start_z;
+    // Point drone_ending_position;
+    // drone_ending_position.x = uav_end_x;
+    // drone_ending_position.y = uav_end_y;
+    // drone_ending_position.z = uav_end_z;
+    suitable_area_points.insert(suitable_area_points.begin(), drone_starting_position);
+    // suitable_area_points.push_back(drone_ending_position);
     std::cout << "GTSP matrix" << std::endl;
     // create GTSP matrix
     std::stringstream gtsp_matrix;
     for(int i = 0; i < suitable_area_points.size(); i++){
+        // std::cout << "fst for" << std::endl;
         for(int j = 0; j < suitable_area_points.size(); j++){
+            // std::cout << "snd for" << std::endl;
             if(i == j){
                 gtsp_matrix << "1000000 ";
             }
@@ -2151,8 +2283,14 @@ sor.setLeafSize (0.1f, 0.1f, 0.1f);
     }
     // std::cout << "2" << std::endl;
     std::vector<std::string> indices_in_clusters;
+    // Adding starting position
+    std::stringstream str_start;
+    str_start << std::to_string(1) << " " << std::to_string(1);// << "-1\n";
+    indices_in_clusters.push_back(str_start.str());
     // for(int i = 0; i < best_planes.size(); i++){
-    for(int i = 0; i < boundary_samples_origins.size(); i++){
+    // for(int i = 0; i < boundary_samples_origins.size(); i++){
+    // std::cout << "boundary_samples_origins start" << std::endl;
+    for(int i = 1; i < boundary_samples_origins.size() + 1; i++){
         // if(i == 0 || i == 1){
         //     std::stringstream str_str;
         //     int val = i + 1;
@@ -2163,14 +2301,18 @@ sor.setLeafSize (0.1f, 0.1f, 0.1f);
         // }
         std::stringstream str_str;
         int val = i + 1;
+        // int val = i + 2;
         str_str << std::to_string(val) << " ";
         indices_in_clusters.push_back(str_str.str());
         // std::cout << str_str.str() << std::endl;
     }
     // std::cout << "3" << std::endl;
-    for(int i = 0; i < suitable_area_points.size(); i++){
+    // for(int i = 0; i < suitable_area_points.size(); i++){
+        std::cout << "suitable_area_points start" << std::endl;
+    for(int i = 1; i < suitable_area_points.size(); i++){   // -1 because of the ending point which is not in the indices vector
         // std::cout << "3.1" << std::endl;
-        int cluster_idx = suitable_areas_points_indices[i];
+        // int cluster_idx = suitable_areas_points_indices[i];
+        int cluster_idx = suitable_areas_points_indices[i-1] + 1;
         // std::cout << "3.2" << std::endl;
         int val = i + 1;
         // std::cout << "3.3" << std::endl;
@@ -2182,14 +2324,20 @@ sor.setLeafSize (0.1f, 0.1f, 0.1f);
         // indices_in_clusters[cluster_idx] =  indices_in_clusters[cluster_idx] + std::to_string(val) + " ";
         // std::cout << indices_in_clusters[cluster_idx] << std::endl;
     }
-    // std::cout << "4" << std::endl;
+    std::cout << "4" << std::endl;
+    // Adding end point
+    // std::stringstream str_end;
+    // str_end << std::to_string(boundary_samples_origins.size() + 2) << " " << std::to_string(suitable_area_points.size()) << " ";// << "-1\n";
+    // indices_in_clusters.push_back(str_end.str());
+
     std::stringstream clusters;
     for(int i = 0; i < indices_in_clusters.size(); i++){
         // clusters << indices_in_clusters[i].str() << " -1\n";
         clusters << indices_in_clusters[i] << "-1\n";
         // std::cout << clusters.str() << std::endl;
     }
-    // std::cout << "5" << std::endl;
+
+    std::cout << "5" << std::endl;
     std::string       problem_filename = "pcl_test";
     std::stringstream command, tour_path, problem_full_name;
     std::string       glkh_script_path      = "/home/honzuna/Stažené/GLKH-1.0";
@@ -2205,7 +2353,7 @@ sor.setLeafSize (0.1f, 0.1f, 0.1f);
         out << "TYPE: GTSP\n";
         out << "DIMENSION: " << std::to_string(suitable_area_points.size()) << "\n";
         // out << "GTSP_SETS: " << std::to_string(best_planes.size()) << "\n";
-        out << "GTSP_SETS: " << std::to_string(boundary_samples.size()) << "\n";
+        out << "GTSP_SETS: " << std::to_string(boundary_samples.size()+1) << "\n";
         out << "EDGE_WEIGHT_TYPE: EXPLICIT\n";
         out << "EDGE_WEIGHT_FORMAT: FULL_MATRIX\n";
         out << "EDGE_WEIGHT_SECTION\n";
@@ -2257,25 +2405,90 @@ sor.setLeafSize (0.1f, 0.1f, 0.1f);
     for(int i = 0; i < solution.size(); i++){
         int sol_idx = solution[i];
         std::cout << "sol: " << sol_idx << std::endl;
+        Point p = suitable_area_points[sol_idx];
+        // p.x = path_points[i].x;
+        // p.y = path_points[i].y;
+        // p.z = path_points[i].z;
+        p.r = 255;
+        p.g = 255;
+        p.a = 255;
+        (*path_cloud).push_back(p);
+        // (*path_cloud).push_back((*areas_cloud)[sol_idx]);
         // markerArray3.markers[sol_idx].color.r = ((suitable_areas_points_indices[sol_idx] + 1.0) / solution.size() ) * 1.0f;
         // markerArray3.markers[sol_idx].color.g = 0.0f;
         // markerArray3.markers[sol_idx].color.b = ((suitable_areas_points_indices[sol_idx] + 1.0) / solution.size() ) * 1.0f;
     }
     
+    
+    
+    // std::vector<Point> solution;
+    // Point p1;
+    // p1.x = 0.0;
+    // p1.y = 3.0;
+    // p1.z = 2.0;
+    // Point p2;
+    // p2.x = 3.0;
+    // p2.y = 3.0;
+    // p2.z = 2.0;
+    // solution.push_back(p1);
+    // solution.push_back(p2);
+    
+    std::cout << "Saving points" << std::endl;
+    std::ofstream gtsp_solution("/home/honzuna/gtsp_solution");
+    if (gtsp_solution.is_open()) {
+        for(int i = 0; i < solution.size(); i++){
+            // Point curr_point = (*boundary_cloud)[solution[i]];
+            Point curr_point = suitable_area_points[solution[i]];
+            std::cout << "position = (" << curr_point.x << ", " << curr_point.y << ", " << curr_point.z << "), heading = ??" << std::endl;
+            gtsp_solution << curr_point.x << " " << curr_point.y << " " << curr_point.z << "\n";
+        }
+        // Adding ending point
+        Point drone_ending_position;
+        drone_ending_position.x = uav_end_x;
+        drone_ending_position.y = uav_end_y;
+        drone_ending_position.z = uav_end_z;
+        gtsp_solution << drone_ending_position.x << " " << drone_ending_position.y << " " << drone_ending_position.z << "\n";
+        gtsp_solution.close();
+    } else {
+        ROS_ERROR("[%s]: Unable to open file.", ros::this_node::getName().c_str());
+    }
+    std::cout << "Points saved" << std::endl;
     */
-    std::vector<Point> solution;
-    Point p1;
-    p1.x = 0.0;
-    p1.y = 3.0;
-    p1.z = 0.0;
-    Point p2;
-    p2.x = 3.0;
-    p2.y = 3.0;
-    p2.z = 0.0;
-    solution.push_back(p1);
-    solution.push_back(p2);
     
-    
+    std::cout << "Reading points" << std::endl;
+    std::vector<Point> solution_points;
+    std::ifstream gtsp_solution_in("/home/honzuna/gtsp_solution");
+    if (gtsp_solution_in.is_open()) {
+        std::string line;
+        bool        tour_started = false;
+        while (std::getline(gtsp_solution_in, line)) {
+            if (line == "-1") {
+                break;
+            }
+            std::cout << "line: " << line << std::endl;
+            const char delim = ' '; 
+            std::vector<std::string> out; 
+            tokenize(line, delim, out);
+            // std::stringstream   linestream(line);
+            // std::string         data;
+            // std::getline(linestream, data, ' ');
+            // double x, y, z;
+            // linestream >> x >> y >> z;
+            Point p;
+            p.x = std::stod(out[0]);
+            p.y = std::stod(out[1]);
+            p.z = std::stod(out[2]);
+            solution_points.push_back(p);
+        }
+        gtsp_solution_in.close();
+    }
+    std::cout << "Points red" << std::endl;
+    for(int i = 0; i < solution_points.size(); i++){
+        Point curr_point = solution_points[i];
+        std::cout << "position = (" << curr_point.x << ", " << curr_point.y << ", " << curr_point.z << "), heading = ??" << std::endl;
+    }
+    std::vector<Point> viewpoints = solution_points;
+    /*
     std::cout << "Original points" << std::endl;
     // for(int i = 0; i < solution.size(); i++){
     //     Point curr_point = (*boundary_cloud)[solution[i]];
@@ -2290,16 +2503,22 @@ sor.setLeafSize (0.1f, 0.1f, 0.1f);
     mrs_msgs::Reference ref_start;    
     mrs_msgs::Reference ref_end;
     ref_end.heading = uav_start_heading;
-    ref_end.position.x = uav_start_x;
-    ref_end.position.y = uav_start_y;
-    ref_end.position.z = uav_start_z;
+    // ref_end.position.x = uav_start_x;
+    // ref_end.position.y = uav_start_y;
+    // ref_end.position.z = uav_start_z;
+    ref_end.position.x = solution_points[0].x;
+    ref_end.position.y = solution_points[0].y;
+    ref_end.position.z = solution_points[0].z;
     std::cout << "===== Calling planner ======" << std::endl;
-    for(int i = 0; i < solution.size(); i++){
+    // for(int i = 0; i < solution.size(); i++){
+    // for(int i = 0; i < solution_points.size(); i++){
+    for(int i = 1; i < solution_points.size(); i++){
         mrs_msgs::GetPath srv;
 
         // Point curr_point = (*boundary_cloud)[solution[i]];
         // Point curr_point = suitable_area_points[solution[i]];
-        Point curr_point = solution[i];
+        // Point curr_point = solution[i];
+        Point curr_point = solution_points[i];
         ref_start.heading = ref_end.heading;
         ref_start.position.x = ref_end.position.x;
         ref_start.position.y = ref_end.position.y;
@@ -2326,32 +2545,32 @@ sor.setLeafSize (0.1f, 0.1f, 0.1f);
             std::cout << "position = (" << srv.response.path[j].position.x << ", " << srv.response.path[j].position.y << ", " << srv.response.path[j].position.z << "), heading = " << srv.response.path[j].heading << std::endl;
         } 
     }
-    mrs_msgs::GetPath srv;
-    ref_start.heading = ref_end.heading;
-    ref_start.position.x = ref_end.position.x;
-    ref_start.position.y = ref_end.position.y;
-    ref_start.position.z = ref_end.position.z;
+    // mrs_msgs::GetPath srv;
+    // ref_start.heading = ref_end.heading;
+    // ref_start.position.x = ref_end.position.x;
+    // ref_start.position.y = ref_end.position.y;
+    // ref_start.position.z = ref_end.position.z;
 
-    ref_end.heading = uav_end_heading; // find out how to deal with heading
-    ref_end.position.x = uav_end_x;
-    ref_end.position.y = uav_end_y;
-    ref_end.position.z = uav_end_z;
+    // ref_end.heading = uav_end_heading; // find out how to deal with heading
+    // ref_end.position.x = uav_end_x;
+    // ref_end.position.y = uav_end_y;
+    // ref_end.position.z = uav_end_z;
     
-    srv.request.start = ref_start;
-    srv.request.goal = ref_end;
-    client.waitForExistence();
-    bool call = client.call(srv);
+    // srv.request.start = ref_start;
+    // srv.request.goal = ref_end;
+    // client.waitForExistence();
+    // bool call = client.call(srv);
 
-    for(int j = 0; j < srv.response.path.size(); j++){
-            Point new_path_point;
-            new_path_point.x = srv.response.path[j].position.x;
-            new_path_point.y = srv.response.path[j].position.y;
-            new_path_point.z = srv.response.path[j].position.z;
-            double heading = srv.response.path[j].heading;
-            path_points.push_back(new_path_point);
-            path_headings.push_back(heading);
-            std::cout << "position = (" << srv.response.path[j].position.x << ", " << srv.response.path[j].position.y << ", " << srv.response.path[j].position.z << "), heading = " << srv.response.path[j].heading << std::endl;
-        } 
+    // for(int j = 0; j < srv.response.path.size(); j++){
+    //         Point new_path_point;
+    //         new_path_point.x = srv.response.path[j].position.x;
+    //         new_path_point.y = srv.response.path[j].position.y;
+    //         new_path_point.z = srv.response.path[j].position.z;
+    //         double heading = srv.response.path[j].heading;
+    //         path_points.push_back(new_path_point);
+    //         path_headings.push_back(heading);
+    //         std::cout << "position = (" << srv.response.path[j].position.x << ", " << srv.response.path[j].position.y << ", " << srv.response.path[j].position.z << "), heading = " << srv.response.path[j].heading << std::endl;
+    //     } 
 
     std::cout << "===== Final path =====" << std::endl;
     for(int i = 0; i < path_points.size(); i++){
@@ -2388,6 +2607,23 @@ sor.setLeafSize (0.1f, 0.1f, 0.1f);
         markerArrayPath.markers.push_back(marker);
         // marker_path.publish(markerArrayPath);
     }
+
+    std::cout << "Saving path" << std::endl;
+    std::ofstream path_founded("/home/honzuna/path_points");
+    if (path_founded.is_open()) {
+        for(int i = 0; i < path_points.size(); i++){
+            // Point curr_point = (*boundary_cloud)[solution[i]];
+            Point curr_point = path_points[i];
+            std::cout << "position = (" << curr_point.x << ", " << curr_point.y << ", " << curr_point.z << "), heading = ??" << std::endl;
+            path_founded << curr_point.x << " " << curr_point.y << " " << curr_point.z << "\n";
+        }
+        path_founded.close();
+    } else {
+        ROS_ERROR("[%s]: Unable to open file.", ros::this_node::getName().c_str());
+    }
+    std::cout << "Path saved" << std::endl;
+    */
+
     // for(int i = 0; i < srv.response.path.size(); i++){
     //     std::cout << "position = (" << srv.response.path[i].position.x << ", " << srv.response.path[i].position.y << ", " << srv.response.path[i].position.z << "), heading = " << srv.response.path[i].heading << std::endl;
     // }
@@ -2413,24 +2649,54 @@ sor.setLeafSize (0.1f, 0.1f, 0.1f);
     // path_points.push_back(p2);
     // path_points.push_back(p3);
 
+    /*
+    std::cout << "Reading path" << std::endl;
+    std::vector<Point> path_solution;
+    std::ifstream path_solution_in("/home/honzuna/gtsp_solution");
+    if (path_solution_in.is_open()) {
+        std::string line;
+        bool        tour_started = false;
+        while (std::getline(path_solution_in, line)) {
+            if (line == "-1") {
+                break;
+            }
+            std::cout << "line: " << line << std::endl;
+            const char delim = ' '; 
+            std::vector<std::string> out; 
+            tokenize(line, delim, out);
+            // std::stringstream   linestream(line);
+            // std::string         data;
+            // std::getline(linestream, data, ' ');
+            // double x, y, z;
+            // linestream >> x >> y >> z;
+            Point p;
+            p.x = std::stod(out[0]);
+            p.y = std::stod(out[1]);
+            p.z = std::stod(out[2]);
+            path_solution.push_back(p);
+        }
+        path_solution_in.close();
+    }
+    std::cout << "Path red" << std::endl;
+
     
-    ros::ServiceClient client = nh.serviceClient<mrs_msgs::PathSrv>("/uav1/trajectory_generation/path");
-    mrs_msgs::PathSrv srv;
+    ros::ServiceClient client_trajectory = nh.serviceClient<mrs_msgs::PathSrv>("/uav1/trajectory_generation/path");
+    mrs_msgs::PathSrv srv_trajectory;
     mrs_msgs::Path path;
     std::vector<mrs_msgs::Reference> refs;
-    for(int i = 0; i < path_points.size(); i++){
+    for(int i = 0; i < path_solution.size(); i++){
         mrs_msgs::Reference ref;
-        ref.position.x = path_points[i].x;
-        ref.position.y = path_points[i].y;
-        ref.position.z = path_points[i].z;
+        ref.position.x = path_solution[i].x;
+        ref.position.y = path_solution[i].y;
+        ref.position.z = path_solution[i].z;
         ref.heading = 0.0;
         refs.push_back(ref);
     }
-    // std_msgs::Header header;
-    // header.frame_id = "/uav1/trajectory_generation/path";
+    //std_msgs::Header header;
+    //header.frame_id = "/uav1/gps_origin"; //"/uav1/trajectory_generation/path";
     //path.header = header;
     //path.input_id = 1;  // not compiled yet
-    // path.use_heading = false;
+    //path.use_heading = false;
     path.fly_now = true;
     // path.stop_at_waypoints = false;
     // path.loop = false;
@@ -2443,14 +2709,15 @@ sor.setLeafSize (0.1f, 0.1f, 0.1f);
     // path.override_max_velocity_vertical = 10.0;
     // path.override_max_acceleration_vertical = 10.0;
     // path.override_max_jerk_vertical = 10.0;
+    path.points = refs;
 
-    srv.request.path = path;
-    client.waitForExistence();
-    bool call = client.call(srv);
+    srv_trajectory.request.path = path;
+    client_trajectory.waitForExistence();
+    bool call_trajectory = client_trajectory.call(srv_trajectory);
 
-    std::cout << "call: " << call << std::endl;
-    std::cout << "response success: " << srv.response.success << std::endl;
-    std::cout << "response message: " << srv.response.message << std::endl;
+    std::cout << "call: " << call_trajectory << std::endl;
+    std::cout << "response success: " << srv_trajectory.response.success << std::endl;
+    std::cout << "response message: " << srv_trajectory.response.message << std::endl;
     */
 
     
@@ -2536,15 +2803,27 @@ sor.setLeafSize (0.1f, 0.1f, 0.1f);
     // marker_pub.publish(markerArray);
     // marker_pub2.publish(markerArray2);
     // marker_pub3.publish(markerArray3);
-
+    std::vector<bool> visited;
+    for(int i = 0; i < viewpoints.size(); i++){
+        visited.push_back(false);
+    }
+    ros::Subscriber drone_sub = nh.subscribe<nav_msgs::Odometry>("/uav1/odometry/odom_main", queue_length, boost::bind(callback, _1, pub_callback, uav_cloud));
+    bool send = true;
+    ros::Subscriber scan_sub = nh.subscribe<sensor_msgs::PointCloud2>("/uav1/os_cloud_nodelet/points", queue_length, boost::bind(callback_scan, _1, pub_callback_scan, uav_cloud, viewpoints, scan_cloud, visited));
+    
     marker_path.publish(markerArrayPath);
     marker_pub.publish(markerArrayPlanesNormals);
-    
-    
+
+    // for(auto &point : *scan_cloud){
+    //     point.r = 255;
+    //     point.g = 0;
+    //     point.b = 0;
+    // }
     
     std::cout << " <<< ===== DONE ===== >>>" << std::endl;
     ros::Rate loop_rate(4);
-	while (nh.ok())
+	// while (nh.ok())
+    while (ros::ok())
 	{
 		// pcl_conversions::toPCL(ros::Time::now(), msg->header.stamp);
 		// pub.publish (*msg);
@@ -2560,7 +2839,7 @@ sor.setLeafSize (0.1f, 0.1f, 0.1f);
         path_cloud->header.frame_id = frame_id;
         boundary_projections->header.frame_id = frame_id;
 
-		// pub.publish (*cloud);
+		pub.publish (*cloud);
         // pub.publish (*new_cloud);
 
         // pub.publish (*final_cloud);
@@ -2569,6 +2848,7 @@ sor.setLeafSize (0.1f, 0.1f, 0.1f);
         pub_path.publish (*path_cloud);
 
         pub3.publish (*boundary_projections);
+        pub_mis_data.publish(scan_to_send);
 
 //         pc_pub.publish(*cloud_normals);
         
@@ -2578,9 +2858,76 @@ sor.setLeafSize (0.1f, 0.1f, 0.1f);
 
 		//pub.publish (*colored_cloud);
 		//pub.publish (*cloud_blob);
-		//ros::spinOnce ();
+		
+        for(auto &point : *scan_cloud){
+            point.r = 255;
+            point.g = 0;
+            point.b = 0;
+            point.a = 255;
+        }
+        // pub_final_data.publish(*scan_cloud);
+        // pub_callback_scan.publish(*scan_cloud);
+        std::cout << scan_cloud->width << " x " << scan_cloud->height << std::endl;
+        bool end = true;
+        for(int i = 0; i < visited.size(); i++){
+            std::cout << "not visited[i]: " << (!visited[i]) << std::endl;
+            if(!visited[i]){
+                end = false;
+                break;
+            }
+        }
+        if(end){
+            break;
+        }
+        
+        ros::spinOnce ();
 		loop_rate.sleep ();
-	}
+    }
+
+    std::cout << "Filtering obtained data" << std::endl;
+    pcl::PCLPointCloud2::Ptr cloud_filtered_2 (new pcl::PCLPointCloud2 ());
+    // std::cout << "22 :)" << std::endl;
+    pcl::PCLPointCloud2::Ptr pcl_pc2_2 (new pcl::PCLPointCloud2 ());
+    // std::cout << "33 :)" << std::endl;
+    pcl_pc2_2->width = scan_cloud->width;
+    // std::cout << "44 :)" << std::endl;
+    pcl_pc2_2->height = scan_cloud->height;
+    // std::cout << "55 :)" << std::endl;
+    pcl::toPCLPointCloud2((*scan_cloud), (*pcl_pc2_2));
+    // std::cout << "22 :)" << std::endl;
+    std::cerr << "PointCloud before filtering: " << scan_cloud->width * scan_cloud->height 
+        << " data points (" << pcl::getFieldsList (*scan_cloud) << ")." << std::endl;
+
+    // Create the filtering object
+    pcl::VoxelGrid<pcl::PCLPointCloud2> sor_2;
+    sor_2.setInputCloud (pcl_pc2_2);
+    //   sor.setLeafSize (0.01f, 0.01f, 0.01f);
+    sor_2.setLeafSize (0.1f, 0.1f, 0.1f);
+    sor_2.filter (*cloud_filtered_2);
+
+    std::cerr << "PointCloud after filtering: " << cloud_filtered_2->width * cloud_filtered_2->height 
+        << " data points (" << pcl::getFieldsList (*cloud_filtered) << ")." << std::endl;
+
+    (*scan_cloud).clear();
+    (*scan_cloud).width = pcl_pc2_2->width;
+    (*scan_cloud).height = pcl_pc2_2->height;
+    pcl::fromPCLPointCloud2((*cloud_filtered_2), (*scan_cloud));
+
+    for(auto &point : *scan_cloud){
+            point.r = 255;
+            point.g = 0;
+            point.b = 0;
+            point.a = 255;
+        }
+    // pub_final_data.publish(*scan_cloud);
+    pub_callback_scan.publish(*scan_cloud);
+    pub2.publish (*scan_cloud);
+
+    if(listen){
+        pcl::io::savePCDFileASCII ("scan.pcd", *scan_cloud);
+    }
+
+    std::cout << "end" << std::endl;
 
 	return 0;
 }

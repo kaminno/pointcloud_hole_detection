@@ -2,12 +2,12 @@
 # # K_normal_estimation: 10
 # epsilon: 0.25
 # K=29, eps=0.3 works pretty good for angles
-K: 31
-epsilon: 0.1
+K: 11
+epsilon: 0.3
 # half disc - quite good for 35:0.3 && 11:0.2
 
-K_2: 8
-epsilon_2: 0.1
+K_2: 11
+epsilon_2: 0.2
 
 # abs_path: "/home/honzuna/"
 # file_name: "pointcloud.pcd"
@@ -15,6 +15,7 @@ epsilon_2: 0.1
 # file_name: "plane.pcd"
 # terrain novy malin
 # file_name: "workspace/src/aerial_core_planning/ros_packages/mrs_octomap_planner/maps/pcds"
+# file_name: ".ros/scan.pcd"
 
 abs_path: "/home/honzuna/moje/bakalarka/modely/naki_gazebo_resources-master/models/"
 # file_name: "cholina/pcd/cholina.pcd"  # 873 273
@@ -35,12 +36,12 @@ file_name: "novy_malin/pcd/novy_malin.pcd"  # 653 652 # FOR SIMULATION
 # file_name: "planning_tower/pcd/power_tower_danube.pcd"
 
 trashold: 0.2
-k_angle: 0.6
-k_halfdisc: 0.4
+k_angle: 0.5
+k_halfdisc: 0.5
 k_shape: 0.0
 
 weight_boundary: 20
-minimum_loop_length: 20
+minimum_loop_length: 18
 
 q: 0
 
@@ -66,13 +67,15 @@ area_samples_mid: 1
 # UAV POSITIONS
 uav_start_x: 0.0
 uav_start_y: 0.0
-uav_start_z: 0.0
+uav_start_z: 2.0
 uav_start_heading: 0.0
 
-uav_end_x: 3.0
+uav_end_x: 0.0
 uav_end_y: 0.0
-uav_end_z: 0.0
+uav_end_z: 2.0
 uav_end_heading: 0.0
+
+listen: false
 
 # ===== for kn_gym_A1 to detect two holes =====
 # K: 11
